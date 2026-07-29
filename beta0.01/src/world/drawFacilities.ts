@@ -12,11 +12,18 @@ export type CampfireDrawState = {
   timeSec: number;
 };
 
+export type CookingPotDrawState = {
+  cooking: boolean;
+  progress: number;
+  timeSec: number;
+};
+
 export function drawFacilities(
   ctx: CanvasRenderingContext2D,
   list: Facility[],
   focusId: string | null,
   campfireState?: CampfireDrawState | null,
+  potState?: CookingPotDrawState | null,
 ): void {
   for (const f of list) {
     const focused = f.id === focusId;
@@ -32,6 +39,9 @@ export function drawFacilities(
         break;
       case "campfire":
         drawCampfire(ctx, f, focused, campfireState ?? null);
+        break;
+      case "cooking_pot":
+        drawCookingPot(ctx, f, focused, potState ?? null);
         break;
     }
   }
@@ -181,6 +191,82 @@ function drawCampfire(
   }
 
   drawLabel(ctx, lit ? "篝火（燃）" : "篝火", cx, f.y - 4);
+}
+
+function drawCookingPot(
+  ctx: CanvasRenderingContext2D,
+  f: Facility,
+  focused: boolean,
+  state: CookingPotDrawState | null,
+): void {
+  const cooking = state?.cooking ?? false;
+  const progress = state?.progress ?? 0;
+  const t = state?.timeSec ?? 0;
+  const cx = f.x + f.size / 2;
+  const cy = f.y + f.size * 0.55;
+
+  drawShadow(ctx, cx, f.y + f.size - 1, f.size * 0.38, f.size * 0.12);
+  if (focused) strokeFocus(ctx, f);
+
+  // 锅身
+  ctx.fillStyle = "#3a3e48";
+  ctx.beginPath();
+  ctx.ellipse(cx, cy + 4, f.size * 0.38, f.size * 0.22, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#2a2e36";
+  ctx.fillRect(cx - f.size * 0.34, cy - 2, f.size * 0.68, f.size * 0.28);
+  ctx.fillStyle = cooking ? "#c45a28" : "#4a3a28";
+  ctx.beginPath();
+  ctx.ellipse(cx, cy - 1, f.size * 0.3, f.size * 0.12, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 锅耳
+  ctx.strokeStyle = "#5a606c";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(cx - f.size * 0.38, cy + 2, 4, Math.PI * 0.2, Math.PI * 1.2);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(cx + f.size * 0.38, cy + 2, 4, -Math.PI * 0.2, Math.PI * 0.8);
+  ctx.stroke();
+
+  if (cooking) {
+    // 冒泡
+    for (let i = 0; i < 4; i++) {
+      const phase = t * (2.2 + i * 0.35) + i * 1.7;
+      const bx = cx + Math.sin(phase) * (5 + i);
+      const by = cy - 6 - ((phase * 8) % 18);
+      const r = 1.5 + (i % 3) * 0.6;
+      ctx.fillStyle = `rgba(230, 245, 255, ${0.35 + (i % 2) * 0.2})`;
+      ctx.beginPath();
+      ctx.arc(bx, by, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // 蒸汽
+    ctx.strokeStyle = "rgba(220, 230, 240, 0.35)";
+    ctx.lineWidth = 1.5;
+    for (let i = 0; i < 3; i++) {
+      const sx = cx - 4 + i * 4;
+      const bob = Math.sin(t * 6 + i) * 2;
+      ctx.beginPath();
+      ctx.moveTo(sx, cy - 8);
+      ctx.quadraticCurveTo(sx + 2, cy - 14 + bob, sx - 1, cy - 20 + bob);
+      ctx.stroke();
+    }
+
+    const bw = f.size;
+    const bh = 3;
+    const bx = f.x;
+    const by = f.y + f.size + 3;
+    ctx.fillStyle = "rgba(0,0,0,0.55)";
+    ctx.fillRect(bx - 1, by - 1, bw + 2, bh + 2);
+    ctx.fillStyle = "#1a2030";
+    ctx.fillRect(bx, by, bw, bh);
+    ctx.fillStyle = "#7ec8ff";
+    ctx.fillRect(bx, by, Math.round(bw * Math.min(1, progress)), bh);
+  }
+
+  drawLabel(ctx, cooking ? "烹饪锅（沸）" : "烹饪锅", cx, f.y - 4);
 }
 
 function strokeFocus(ctx: CanvasRenderingContext2D, f: Facility): void {

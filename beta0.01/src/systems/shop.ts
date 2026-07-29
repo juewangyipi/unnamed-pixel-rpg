@@ -1,5 +1,6 @@
 import type { ItemId } from "../data/items.ts";
-import { ITEMS, getItem } from "../data/items.ts";
+import { ITEMS } from "../data/items.ts";
+import { getBuyPrice, getSellPrice } from "../data/prices.ts";
 import {
   bagExpandPrice,
   CONFIG,
@@ -14,7 +15,8 @@ export type ShopState = {
 };
 
 /**
- * 商店：卖资源、扩背包、扩仓库。
+ * 商店：卖物资（经背包/仓库点击）、扩背包/仓库。
+ * 从商店购买货架商品：后置，见 buyOne（保留实现，UI 暂不暴露）。
  */
 export class Shop {
   bagExpandLevel = 0;
@@ -28,6 +30,41 @@ export class Shop {
     return warehouseExpandPrice(this.warehouseExpandLevel);
   }
 
+  /**
+   * 从商店买 1 个进背包（功能保留，当前 UI 未开放）。
+   * @internal 后续版本商店货架启用
+   */
+  buyOne(
+    inv: Inventory,
+    wallet: Wallet,
+    itemId: ItemId,
+  ): string | null {
+    const price = getBuyPrice(itemId);
+    if (!wallet.spend(price)) {
+      return `金币不足（需 ${price}）`;
+    }
+    if (!inv.canFit(itemId, 1)) {
+      wallet.earn(price);
+      return "背包已满";
+    }
+    inv.add(itemId, 1);
+    return null;
+  }
+
+  /** 卖掉某容器中该物品 1 个 */
+  sellOne(
+    inv: Inventory,
+    wallet: Wallet,
+    itemId: ItemId,
+  ): { sold: number; gold: number } {
+    if (inv.countOf(itemId) <= 0) return { sold: 0, gold: 0 };
+    const removed = inv.remove(itemId, 1);
+    const gold = removed * getSellPrice(itemId);
+    wallet.earn(gold);
+    return { sold: removed, gold };
+  }
+
+  /** 卖掉某容器中该物品的全部 */
   sellAll(
     inv: Inventory,
     wallet: Wallet,
@@ -36,7 +73,7 @@ export class Shop {
     const count = inv.countOf(itemId);
     if (count <= 0) return { sold: 0, gold: 0 };
     const removed = inv.remove(itemId, count);
-    const gold = removed * getItem(itemId).sellPrice;
+    const gold = removed * getSellPrice(itemId);
     wallet.earn(gold);
     return { sold: removed, gold };
   }

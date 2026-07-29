@@ -15,7 +15,7 @@ import { CONFIG } from "../core/config.ts";
 const CHUNKS: Record<ChunkId, Chunk> = {
   village: {
     id: "village",
-    name: "村落",
+    name: "村子",
     groundColor: "#3d5c45",
     gridColor: "#35533e",
     widthTiles: CONFIG.viewTilesW,

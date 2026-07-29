@@ -44,6 +44,7 @@ export const CONFIG = {
     right: ["KeyD", "ArrowRight"],
     interact: ["KeyE", "Space"],
     inventory: ["KeyB", "KeyI"],
+    skills: ["KeyR"],
     escape: ["Escape"],
   },
 } as const;

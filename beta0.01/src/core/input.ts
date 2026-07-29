@@ -14,14 +14,15 @@ export class Input {
   private readonly just = new Set<string>();
 
   constructor() {
-    window.addEventListener("keydown", this.onKeyDown);
-    window.addEventListener("keyup", this.onKeyUp);
+    // capture：滑条/按钮聚焦时 Esc 仍能关掉面板
+    window.addEventListener("keydown", this.onKeyDown, true);
+    window.addEventListener("keyup", this.onKeyUp, true);
     window.addEventListener("blur", this.onBlur);
   }
 
   dispose(): void {
-    window.removeEventListener("keydown", this.onKeyDown);
-    window.removeEventListener("keyup", this.onKeyUp);
+    window.removeEventListener("keydown", this.onKeyDown, true);
+    window.removeEventListener("keyup", this.onKeyUp, true);
     window.removeEventListener("blur", this.onBlur);
     this.down.clear();
     this.just.clear();
@@ -53,6 +54,10 @@ export class Input {
     return this.anyJust(CONFIG.keys.inventory);
   }
 
+  isSkillsJustPressed(): boolean {
+    return this.anyJust(CONFIG.keys.skills);
+  }
+
   isEscapeJustPressed(): boolean {
     return this.anyJust(CONFIG.keys.escape);
   }
@@ -76,6 +81,7 @@ export class Input {
       e.code === "KeyE" ||
       e.code === "KeyB" ||
       e.code === "KeyI" ||
+      e.code === "KeyR" ||
       e.code === "Escape"
     ) {
       e.preventDefault();

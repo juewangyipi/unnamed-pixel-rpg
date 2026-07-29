@@ -9,7 +9,7 @@ import {
 import type { Inventory } from "./inventory.ts";
 import type { Skills } from "./skills.ts";
 import { getItem } from "../data/items.ts";
-import { SKILLS } from "../data/skills.ts";
+import { SKILLS, skillDuration } from "../data/skills.ts";
 import { CONFIG } from "../core/config.ts";
 
 export type Toast = {
@@ -136,7 +136,11 @@ export class InteractionSystem {
             }
             // 背包满时暂停进度，auto 仍保持进行中以便腾出空位后继续
           } else {
-            active.progress += dt / profile.duration;
+            const dur = skillDuration(
+              profile.duration,
+              skills.get(profile.skillId).level,
+            );
+            active.progress += dt / dur;
             if (active.progress >= 1) {
               active.progress = 0;
               active.hits += 1;

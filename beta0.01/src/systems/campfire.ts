@@ -7,7 +7,7 @@ import type { Inventory } from "./inventory.ts";
 import type { Skills } from "./skills.ts";
 import type { Toast } from "./interaction.ts";
 import { getItem } from "../data/items.ts";
-import { SKILLS } from "../data/skills.ts";
+import { SKILLS, skillDuration } from "../data/skills.ts";
 import { CONFIG } from "../core/config.ts";
 
 /** 每烧一根木头所需秒数 */
@@ -109,7 +109,11 @@ export class CampfireSystem {
       return { toasts, lit: false, progress: 0 };
     }
 
-    this.progress += dt / CAMPFIRE_BURN_SEC;
+    const burnSec = skillDuration(
+      CAMPFIRE_BURN_SEC,
+      skills.get("firemaking").level,
+    );
+    this.progress += dt / burnSec;
     if (this.progress < 1) {
       return { toasts, lit: true, progress: this.progress };
     }

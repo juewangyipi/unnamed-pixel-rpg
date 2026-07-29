@@ -19,6 +19,7 @@ export class Skills {
     woodcutting: { level: 1, xp: 0 },
     fishing: { level: 1, xp: 0 },
     firemaking: { level: 1, xp: 0 },
+    cooking: { level: 1, xp: 0 },
   };
 
   get(id: SkillId): SkillState {
@@ -53,6 +54,7 @@ export class Skills {
       woodcutting: { ...this.states.woodcutting },
       fishing: { ...this.states.fishing },
       firemaking: { ...this.states.firemaking },
+      cooking: { ...this.states.cooking },
     };
   }
 

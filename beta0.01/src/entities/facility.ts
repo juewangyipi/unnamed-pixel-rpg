@@ -1,6 +1,11 @@
 import type { ChunkId } from "../world/chunk.ts";
 
-export type FacilityKind = "shop" | "warehouse" | "save_point" | "campfire";
+export type FacilityKind =
+  | "shop"
+  | "warehouse"
+  | "save_point"
+  | "campfire"
+  | "cooking_pot";
 
 export type Facility = {
   id: string;

@@ -7,8 +7,6 @@ import { Input } from "./input.ts";
 import { Player, type Facing } from "../entities/player.ts";
 import { World } from "../world/world.ts";
 import { renderChunkBackground } from "../world/renderChunk.ts";
-import { listExits } from "../world/transition.ts";
-import { getChunk } from "../world/registry.ts";
 import { Inventory } from "../systems/inventory.ts";
 import { Skills } from "../systems/skills.ts";
 import { InteractionSystem, type Toast } from "../systems/interaction.ts";
@@ -19,6 +17,7 @@ import {
   CampfireSystem,
   isNearCampfire,
 } from "../systems/campfire.ts";
+import { CookingSystem } from "../systems/cooking.ts";
 import { Wallet } from "../systems/wallet.ts";
 import { Shop } from "../systems/shop.ts";
 import { TimeOfDay } from "../systems/timeOfDay.ts";
@@ -28,6 +27,10 @@ import { drawFacilities } from "../world/drawFacilities.ts";
 import { InventoryPanel } from "../ui/inventoryPanel.ts";
 import { ShopPanel } from "../ui/shopPanel.ts";
 import { WarehousePanel } from "../ui/warehousePanel.ts";
+import { CookPanel } from "../ui/cookPanel.ts";
+import { SkillsPanel } from "../ui/skillsPanel.ts";
+import { PauseMenu } from "../ui/pauseMenu.ts";
+import { SettingsStore } from "../systems/settings.ts";
 import { GATHER, type InteractKind } from "../entities/interactable.ts";
 import type { Facility } from "../entities/facility.ts";
 import { loadSave, writeSave, type SavePointData } from "../save/saveGame.ts";
@@ -35,7 +38,7 @@ import { getItem } from "../data/items.ts";
 import { drawShadow, drawSprite, type SpriteName } from "../assets/sprites.ts";
 
 /**
- * 核心循环：移动 · 切屏 · 采集 · 背包 · 商店仓库 · 昼夜 · 死亡 · 存档
+ * 核心循环：移动 · 切屏 · 采集 · 背包 · 商店仓库 · 昼夜 · 暂停菜单 · 存档
  */
 export class Game {
   private readonly canvas: HTMLCanvasElement;
@@ -50,18 +53,25 @@ export class Game {
   private readonly wallet: Wallet;
   private readonly shop = new Shop();
   private readonly time = new TimeOfDay();
+  private readonly settings = new SettingsStore();
   private readonly interaction = new InteractionSystem();
   private readonly interactables = new InteractableStore();
   private readonly facilities = new FacilityStore();
   private readonly campfire = new CampfireSystem();
+  private readonly cooking = new CookingSystem();
   private readonly invPanel: InventoryPanel;
   private readonly shopPanel: ShopPanel;
   private readonly warehousePanel: WarehousePanel;
+  private readonly cookPanel: CookPanel;
+  private readonly skillsPanel: SkillsPanel;
+  private readonly pauseMenu: PauseMenu;
 
   private hp: number = CONFIG.maxHp;
   private savePoint: SavePointData;
   private lastGatherKind: InteractKind | null = null;
   private bagDirty = false;
+  private cookUiAcc = 0;
+  private paused = false;
 
   private lastTs = 0;
   private raf = 0;
@@ -85,6 +95,16 @@ export class Game {
     this.invPanel = new InventoryPanel(app);
     this.shopPanel = new ShopPanel(app);
     this.warehousePanel = new WarehousePanel(app);
+    this.cookPanel = new CookPanel(app);
+    this.skillsPanel = new SkillsPanel(app);
+    this.pauseMenu = new PauseMenu(app);
+    this.pauseMenu.bindSettings(this.settings);
+    this.pauseMenu.setActions({
+      onResume: () => this.resumeGame(),
+      onSettingsChanged: () => {
+        /* 音量等已写入 localStorage */
+      },
+    });
 
     const ctx = canvas.getContext("2d");
     if (!ctx) throw new Error("Canvas 2D not available");
@@ -133,22 +153,6 @@ export class Game {
 
   private wirePanels(): void {
     this.shopPanel.setActions({
-      onSellWood: () => {
-        const r = this.shop.sellAll(this.inventory, this.wallet, "wood");
-        this.afterShopTrade(r);
-      },
-      onSellFish: () => {
-        const r = this.shop.sellAll(this.inventory, this.wallet, "raw_shrimp");
-        this.afterShopTrade(r);
-      },
-      onSellCoal: () => {
-        const r = this.shop.sellAll(this.inventory, this.wallet, "coal");
-        this.afterShopTrade(r);
-      },
-      onSellAll: () => {
-        const r = this.shop.sellEverything(this.inventory, this.wallet);
-        this.afterShopTrade(r);
-      },
       onExpandBag: () => {
         const err = this.shop.buyBagExpand(this.inventory, this.wallet);
         if (err) this.pushToast(err);
@@ -167,7 +171,18 @@ export class Game {
           this.saveNow();
         }
       },
-      onClose: () => this.shopPanel.setOpen(false),
+      onClose: () => this.closeShop(),
+    });
+
+    this.invPanel.setActions({
+      onSellOneOf: (itemId) => {
+        const r = this.shop.sellOne(this.inventory, this.wallet, itemId);
+        this.afterShopTrade(r, getItem(itemId).name);
+      },
+      onSellAllOf: (itemId) => {
+        const r = this.shop.sellAll(this.inventory, this.wallet, itemId);
+        this.afterShopTrade(r, getItem(itemId).name);
+      },
     });
 
     this.warehousePanel.setActions({
@@ -196,6 +211,8 @@ export class Game {
         this.refreshOpenPanels();
       },
       onWarehouseSlot: (index) => {
+        // 商店联动时格子只右键卖；非商店模式左键取出
+        if (this.shopPanel.isOpen) return;
         const stack = this.warehouse.takeSlot(index);
         if (!stack) return;
         const err = this.inventory.addStack(stack);
@@ -207,15 +224,78 @@ export class Game {
         }
         this.refreshOpenPanels();
       },
-      onClose: () => this.warehousePanel.setOpen(false),
+      onSellOneOf: (itemId) => {
+        const r = this.shop.sellOne(this.warehouse, this.wallet, itemId);
+        this.afterShopTrade(r, getItem(itemId).name);
+      },
+      onSellAllOf: (itemId) => {
+        const r = this.shop.sellAll(this.warehouse, this.wallet, itemId);
+        this.afterShopTrade(r, getItem(itemId).name);
+      },
+      onClose: () => {
+        if (this.shopPanel.isOpen) this.closeShop();
+        else this.warehousePanel.setOpen(false);
+      },
+    });
+
+    this.cookPanel.setActions({
+      onStart: (recipeId, amount) => {
+        const err = this.cooking.start(recipeId, amount, this.inventory);
+        if (err) this.pushToast(err);
+        else {
+          this.pushToast("开始烹饪…");
+          this.cookPanel.refresh(this.cooking, this.inventory, this.skills);
+          this.saveNow();
+        }
+      },
+      onStop: () => {
+        const toasts: Toast[] = [];
+        this.cooking.stop(toasts, "已停止烹饪");
+        this.toasts.push(...toasts);
+        this.cookPanel.refresh(this.cooking, this.inventory, this.skills);
+        this.bagDirty = true;
+      },
+      onClose: () => this.cookPanel.setOpen(false),
     });
   }
 
-  private afterShopTrade(r: { sold: number; gold: number }): void {
+  private afterShopTrade(
+    r: { sold: number; gold: number },
+    itemName?: string,
+  ): void {
     if (r.sold <= 0) this.pushToast("没有可卖的资源");
-    else this.pushToast(`卖出 ${r.sold} 件，+${r.gold} 金`);
+    else {
+      const name = itemName ? ` ${itemName}` : "";
+      this.pushToast(`卖出${name} x${r.sold}，+${r.gold} 金`);
+    }
     this.refreshOpenPanels();
     this.saveNow();
+  }
+
+  /** 打开商店：同时打开背包 + 仓库 */
+  private openShop(): void {
+    this.closeAllPanels();
+    this.invPanel.setShopLinked(true);
+    this.warehousePanel.setShopLinked(true);
+    this.shopPanel.setOpen(true);
+    this.invPanel.setOpen(true);
+    this.warehousePanel.setOpen(true);
+    this.shopPanel.refresh(
+      this.shop,
+      this.wallet,
+      this.inventory,
+      this.warehouse,
+    );
+    this.invPanel.refresh(this.inventory);
+    this.warehousePanel.refresh(this.inventory, this.warehouse);
+  }
+
+  private closeShop(): void {
+    this.shopPanel.setOpen(false);
+    this.invPanel.setOpen(false);
+    this.warehousePanel.setOpen(false);
+    this.invPanel.setShopLinked(false);
+    this.warehousePanel.setShopLinked(false);
   }
 
   private refreshOpenPanels(): void {
@@ -230,6 +310,12 @@ export class Game {
     }
     if (this.warehousePanel.isOpen) {
       this.warehousePanel.refresh(this.inventory, this.warehouse);
+    }
+    if (this.cookPanel.isOpen) {
+      this.cookPanel.refresh(this.cooking, this.inventory, this.skills);
+    }
+    if (this.skillsPanel.isOpen) {
+      this.skillsPanel.refresh(this.skills);
     }
   }
 
@@ -301,17 +387,62 @@ export class Game {
     this.raf = requestAnimationFrame(this.frame);
   };
 
+  private anyGameplayPanelOpen(): boolean {
+    return (
+      this.shopPanel.isOpen ||
+      this.warehousePanel.isOpen ||
+      this.invPanel.isOpen ||
+      this.cookPanel.isOpen ||
+      this.skillsPanel.isOpen
+    );
+  }
+
+  private pauseGame(): void {
+    this.paused = true;
+    this.closeAllPanels();
+    this.pauseMenu.setOpen(true);
+  }
+
+  private resumeGame(): void {
+    this.paused = false;
+    this.pauseMenu.setOpen(false);
+  }
+
   private update(dt: number): void {
-    // 面板开关
+    // Esc：关面板 → 或 打开/关闭暂停
     if (this.input.isEscapeJustPressed()) {
-      this.closeAllPanels();
+      if (this.pauseMenu.isOpen) {
+        this.pauseMenu.handleEscape();
+      } else if (this.anyGameplayPanelOpen()) {
+        this.closeAllPanels();
+      } else {
+        this.pauseGame();
+      }
+    }
+
+    // 暂停中：不推进世界，只保留菜单操作
+    if (this.paused) {
+      return;
     }
 
     if (this.input.isInventoryJustPressed()) {
-      const next = !this.invPanel.isOpen;
+      // 商店联动时 B 关闭整组；否则只切换背包
+      if (this.shopPanel.isOpen) {
+        this.closeAllPanels();
+      } else {
+        const next = !this.invPanel.isOpen;
+        this.closeAllPanels();
+        this.invPanel.setShopLinked(false);
+        this.invPanel.setOpen(next);
+        if (next) this.invPanel.refresh(this.inventory);
+      }
+    }
+
+    if (this.input.isSkillsJustPressed()) {
+      const next = !this.skillsPanel.isOpen;
       this.closeAllPanels();
-      this.invPanel.setOpen(next);
-      if (next) this.invPanel.refresh(this.inventory);
+      this.skillsPanel.setOpen(next);
+      if (next) this.skillsPanel.refresh(this.skills);
     }
 
     this.time.update(dt);
@@ -335,7 +466,12 @@ export class Game {
     // 设施：点按 E（面板打开时 E 关闭）
     let usedInteractForFacility = false;
     if (this.input.isInteractJustPressed()) {
-      if (this.shopPanel.isOpen || this.warehousePanel.isOpen) {
+      if (
+        this.shopPanel.isOpen ||
+        this.warehousePanel.isOpen ||
+        this.cookPanel.isOpen ||
+        this.skillsPanel.isOpen
+      ) {
         this.closeAllPanels();
         usedInteractForFacility = true;
       } else if (this.focusFacility?.kind === "campfire") {
@@ -367,9 +503,35 @@ export class Game {
       this.bagDirty = true;
     }
 
-    // 采集：树/鱼点一下持续采（开店/仓时不采）
+    // 烹饪进行中
+    const cookResult = this.cooking.update({
+      dt,
+      inventory: this.inventory,
+      skills: this.skills,
+    });
+    if (cookResult.toasts.length) {
+      this.toasts.push(...cookResult.toasts);
+      this.bagDirty = true;
+    }
+    // 烹饪面板打开时节流刷新进度（避免每帧重建按钮）
+    if (this.cookPanel.isOpen) {
+      this.cookUiAcc += dt;
+      if (
+        cookResult.finishedBatch ||
+        (this.cooking.active && this.cookUiAcc >= 0.2)
+      ) {
+        this.cookUiAcc = 0;
+        this.cookPanel.refresh(this.cooking, this.inventory, this.skills);
+      }
+    } else {
+      this.cookUiAcc = 0;
+    }
+
+    // 采集：树/鱼点一下持续采（开面板时不采）
     const canGather =
-      !this.shopPanel.isOpen && !this.warehousePanel.isOpen;
+      !this.shopPanel.isOpen &&
+      !this.warehousePanel.isOpen &&
+      !this.cookPanel.isOpen;
     const result = this.interaction.update({
       dt,
       nowSec,
@@ -397,30 +559,31 @@ export class Game {
       this.bagDirty = false;
     }
 
-    // 自动存档
-    this.autosaveAcc += dt;
-    if (this.autosaveAcc >= CONFIG.autosaveSec) {
-      this.autosaveAcc = 0;
-      this.saveNow();
+    // 自动存档（可在设置里关闭）
+    if (this.settings.raw.autosave) {
+      this.autosaveAcc += dt;
+      if (this.autosaveAcc >= CONFIG.autosaveSec) {
+        this.autosaveAcc = 0;
+        this.saveNow();
+      }
     }
 
-    for (const t of this.toasts) t.ttl -= dt;
-    this.toasts = this.toasts.filter((t) => t.ttl > 0);
+    if (this.settings.raw.showToasts) {
+      for (const t of this.toasts) t.ttl -= dt;
+      this.toasts = this.toasts.filter((t) => t.ttl > 0);
+    } else {
+      this.toasts = [];
+    }
   }
 
   private openFacility(f: Facility): void {
     this.closeAllPanels();
     switch (f.kind) {
       case "shop":
-        this.shopPanel.setOpen(true);
-        this.shopPanel.refresh(
-          this.shop,
-          this.wallet,
-          this.inventory,
-          this.warehouse,
-        );
+        this.openShop();
         break;
       case "warehouse":
+        this.warehousePanel.setShopLinked(false);
         this.warehousePanel.setOpen(true);
         this.warehousePanel.refresh(this.inventory, this.warehouse);
         break;
@@ -428,6 +591,10 @@ export class Game {
         this.activateSavePoint();
         break;
       case "campfire":
+        break;
+      case "cooking_pot":
+        this.cookPanel.setOpen(true);
+        this.cookPanel.refresh(this.cooking, this.inventory, this.skills);
         break;
     }
   }
@@ -444,12 +611,21 @@ export class Game {
   }
 
   private closeAllPanels(): void {
-    this.invPanel.setOpen(false);
+    if (this.shopPanel.isOpen) {
+      this.closeShop();
+    } else {
+      this.invPanel.setOpen(false);
+      this.warehousePanel.setOpen(false);
+      this.invPanel.setShopLinked(false);
+      this.warehousePanel.setShopLinked(false);
+    }
     this.shopPanel.setOpen(false);
-    this.warehousePanel.setOpen(false);
+    this.cookPanel.setOpen(false);
+    this.skillsPanel.setOpen(false);
   }
 
   private pushToast(text: string, ttl = 2.4): void {
+    if (!this.settings.raw.showToasts) return;
     this.toasts.push({ text, ttl });
   }
 
@@ -461,11 +637,22 @@ export class Game {
     const facilityList = this.facilities.forChunk(world.currentId);
 
     renderChunkBackground(ctx, chunk, canvas.width, canvas.height);
-    drawFacilities(ctx, facilityList, this.focusFacility?.id ?? null, {
-      lit: this.campfire.lit,
-      progress: this.campfire.progress,
-      timeSec: performance.now() / 1000,
-    });
+    const nowDraw = performance.now() / 1000;
+    drawFacilities(
+      ctx,
+      facilityList,
+      this.focusFacility?.id ?? null,
+      {
+        lit: this.campfire.lit,
+        progress: this.campfire.progress,
+        timeSec: nowDraw,
+      },
+      {
+        cooking: this.cooking.active,
+        progress: this.cooking.progress,
+        timeSec: nowDraw,
+      },
+    );
     drawInteractables(
       ctx,
       gatherList,
@@ -493,15 +680,38 @@ export class Game {
       ctx.fillText(tip, px, py);
     }
 
-    this.drawToasts();
+    if (!this.paused) {
+      this.drawToasts();
+    }
     this.updateHud();
+
+    // 暂停时在画布上叠一层暗色（DOM 菜单在外层）
+    if (this.paused) {
+      ctx.fillStyle = "rgba(0,0,0,0.25)";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = "rgba(255,244,192,0.9)";
+      ctx.font = "12px sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("已暂停", canvas.width / 2, 20);
+    }
   }
 
   private promptText(): string | null {
-    if (this.shopPanel.isOpen || this.warehousePanel.isOpen) return null;
+    if (
+      this.shopPanel.isOpen ||
+      this.warehousePanel.isOpen ||
+      this.cookPanel.isOpen
+    ) {
+      return null;
+    }
     if (this.focusFacility?.kind === "campfire") {
       if (this.campfire.lit) return "E · 熄灭篝火";
       return "E · 点燃篝火";
+    }
+    if (this.focusFacility?.kind === "cooking_pot") {
+      if (this.cooking.active) return "E · 烹饪锅（烹饪中）";
+      return "E · 打开烹饪锅";
     }
     if (this.focusFacility) {
       return `E · ${this.focusFacility.label}`;
@@ -604,17 +814,31 @@ export class Game {
     return this.lightLayerCtx;
   }
 
-  /** 当前块点燃的篝火中心；没有则 null */
-  private litCampfireCenter(): { x: number; y: number } | null {
-    if (!this.campfire.lit) return null;
-    const f = this.facilities
-      .forChunk(this.world.currentId)
-      .find((x) => x.kind === "campfire");
-    if (!f) return null;
-    return {
-      x: f.x + f.size / 2,
-      y: f.y + f.size * 0.55,
-    };
+  /** 当前块光源（篝火 / 烹饪锅） */
+  private activeLights(): { x: number; y: number; warm: boolean }[] {
+    const list = this.facilities.forChunk(this.world.currentId);
+    const lights: { x: number; y: number; warm: boolean }[] = [];
+    if (this.campfire.lit) {
+      const f = list.find((x) => x.kind === "campfire");
+      if (f) {
+        lights.push({
+          x: f.x + f.size / 2,
+          y: f.y + f.size * 0.55,
+          warm: true,
+        });
+      }
+    }
+    if (this.cooking.active) {
+      const f = list.find((x) => x.kind === "cooking_pot");
+      if (f) {
+        lights.push({
+          x: f.x + f.size / 2,
+          y: f.y + f.size * 0.5,
+          warm: false,
+        });
+      }
+    }
+    return lights;
   }
 
   private drawDayOverlay(): void {
@@ -622,14 +846,13 @@ export class Game {
     const w = canvas.width;
     const h = canvas.height;
     const d = this.time.darkness();
-    const light = this.litCampfireCenter();
+    const lights = this.activeLights();
     const t = performance.now() / 1000;
     const flicker =
       1 + Math.sin(t * 12) * 0.05 + Math.sin(t * 21) * 0.035;
-    /** 光照半径（格） */
     const lightRadius = CONFIG.tileSize * 5.2 * flicker;
 
-    // 昼夜压暗；点燃篝火时在中心挖出柔和亮区
+    // 昼夜压暗；光源挖洞
     if (d > 0) {
       const phase = this.time.phase();
       const lctx = this.ensureLightLayer(w, h);
@@ -643,36 +866,37 @@ export class Game {
       }
       lctx.fillRect(0, 0, w, h);
 
-      if (light) {
+      if (lights.length) {
         lctx.globalCompositeOperation = "destination-out";
-        const hole = lctx.createRadialGradient(
-          light.x,
-          light.y,
-          lightRadius * 0.12,
-          light.x,
-          light.y,
-          lightRadius,
-        );
-        // 中心完全抠掉夜晚遮罩，边缘渐隐
-        hole.addColorStop(0, "rgba(0,0,0,1)");
-        hole.addColorStop(0.35, "rgba(0,0,0,0.85)");
-        hole.addColorStop(0.7, "rgba(0,0,0,0.35)");
-        hole.addColorStop(1, "rgba(0,0,0,0)");
-        lctx.fillStyle = hole;
-        lctx.fillRect(0, 0, w, h);
+        for (const light of lights) {
+          const hole = lctx.createRadialGradient(
+            light.x,
+            light.y,
+            lightRadius * 0.12,
+            light.x,
+            light.y,
+            lightRadius,
+          );
+          hole.addColorStop(0, "rgba(0,0,0,1)");
+          hole.addColorStop(0.35, "rgba(0,0,0,0.85)");
+          hole.addColorStop(0.7, "rgba(0,0,0,0.35)");
+          hole.addColorStop(1, "rgba(0,0,0,0)");
+          lctx.fillStyle = hole;
+          lctx.fillRect(0, 0, w, h);
+        }
         lctx.globalCompositeOperation = "source-over";
       }
 
       ctx.drawImage(this.lightLayer!, 0, 0);
     }
 
-    // 点燃时叠加暖色光晕（白天也略亮，夜晚更明显）
-    if (light) {
+    // 光源光晕
+    for (const light of lights) {
       ctx.save();
       ctx.globalCompositeOperation = "screen";
       const warmCore = 0.28 + d * 0.35;
       const warmMid = 0.14 + d * 0.22;
-      const warm = ctx.createRadialGradient(
+      const glow = ctx.createRadialGradient(
         light.x,
         light.y,
         0,
@@ -680,16 +904,23 @@ export class Game {
         light.y,
         lightRadius * 1.05,
       );
-      warm.addColorStop(0, `rgba(255, 210, 120, ${warmCore})`);
-      warm.addColorStop(0.22, `rgba(255, 150, 60, ${warmMid})`);
-      warm.addColorStop(0.55, `rgba(220, 90, 30, ${0.08 + d * 0.1})`);
-      warm.addColorStop(1, "rgba(0,0,0,0)");
-      ctx.fillStyle = warm;
+      if (light.warm) {
+        glow.addColorStop(0, `rgba(255, 210, 120, ${warmCore})`);
+        glow.addColorStop(0.22, `rgba(255, 150, 60, ${warmMid})`);
+        glow.addColorStop(0.55, `rgba(220, 90, 30, ${0.08 + d * 0.1})`);
+      } else {
+        // 锅：偏暖白蒸汽光
+        glow.addColorStop(0, `rgba(255, 230, 200, ${warmCore * 0.9})`);
+        glow.addColorStop(0.28, `rgba(255, 180, 100, ${warmMid * 0.9})`);
+        glow.addColorStop(0.6, `rgba(180, 120, 80, ${0.06 + d * 0.08})`);
+      }
+      glow.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = glow;
       ctx.fillRect(0, 0, w, h);
       ctx.restore();
     }
 
-    // 轻 vignette，让画面更有「绘本」层次
+    // 轻 vignette
     const g = ctx.createRadialGradient(
       w / 2,
       h / 2,
@@ -743,24 +974,11 @@ export class Game {
 
   private updateHud(): void {
     const chunk = this.world.current;
-    const inv = this.inventory;
-    const lines = [
-      `${CONFIG.title}`,
-      `地图: ${chunk.name} · ${this.time.phaseLabel()}`,
-      `金 ${this.wallet.gold} · HP ${Math.ceil(this.hp)}/${CONFIG.maxHp}`,
-      `技能: ${this.skills.summaryLine()}`,
-      `背包 ${inv.usedSlots()}/${inv.capacity} 仓 ${this.warehouse.usedSlots()}/${this.warehouse.capacity} · 木${inv.countOf("wood")} 虾${inv.countOf("raw_shrimp")} 煤${inv.countOf("coal")}`,
-      `出口: ${listExits(chunk)}`,
-      `E 互动 · B 背包 · 村内店/仓/篝火/存档点`,
-    ];
-
-    if (this.transitionFlash > 0 && this.world.lastTransition) {
-      const t = this.world.lastTransition;
-      lines.push(
-        `切屏: ${getChunk(t.from).name} → ${getChunk(t.to).name}`,
-      );
-    }
-
-    this.hud.textContent = lines.join("\n");
+    this.hud.textContent = [
+      `地图: ${chunk.name}`,
+      `时间: ${this.time.phaseLabel()}`,
+      `金币: ${this.wallet.gold}`,
+      `HP: ${Math.ceil(this.hp)}/${CONFIG.maxHp}`,
+    ].join("\n");
   }
 }

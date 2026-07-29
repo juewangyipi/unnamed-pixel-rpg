@@ -2,18 +2,17 @@ import type { Inventory } from "../systems/inventory.ts";
 import type { Wallet } from "../systems/wallet.ts";
 import type { Shop } from "../systems/shop.ts";
 import { CONFIG } from "../core/config.ts";
-import { getItem } from "../data/items.ts";
 
 export type ShopActions = {
-  onSellWood: () => void;
-  onSellFish: () => void;
-  onSellCoal: () => void;
-  onSellAll: () => void;
   onExpandBag: () => void;
   onExpandWarehouse: () => void;
   onClose: () => void;
 };
 
+/**
+ * 商店：当前仅扩容服务。
+ * 买卖货架暂缓；打开时由 Game 联动背包/仓库，在其上卖东西。
+ */
 export class ShopPanel {
   private readonly root: HTMLElement;
   private readonly body: HTMLElement;
@@ -23,19 +22,19 @@ export class ShopPanel {
   constructor(host: HTMLElement) {
     this.root = document.createElement("div");
     this.root.id = "shop-panel";
-    this.root.className = "side-panel";
+    this.root.className = "side-panel pixel-frame shop-center";
     this.root.hidden = true;
 
     const title = document.createElement("div");
     title.className = "inv-title";
-    title.textContent = "商店";
+    title.textContent = "◆ 商店 ◆";
 
     this.body = document.createElement("div");
     this.body.className = "panel-body";
 
     const hint = document.createElement("div");
     hint.className = "inv-hint";
-    hint.textContent = "Esc / E 关闭";
+    hint.textContent = "背包/仓：左键卖1 · 右键卖全 · Esc/E 关";
 
     this.root.append(title, this.body, hint);
     host.appendChild(this.root);
@@ -52,50 +51,46 @@ export class ShopPanel {
   setOpen(open: boolean): void {
     this.open = open;
     this.root.hidden = !open;
+    document.body.classList.toggle("shop-open", open);
   }
 
   refresh(shop: Shop, wallet: Wallet, bag: Inventory, warehouse: Inventory): void {
     this.body.replaceChildren();
 
-    const gold = el("div", "panel-row strong", `金币: ${wallet.gold}`);
-    this.body.appendChild(gold);
-
+    this.body.appendChild(
+      el("div", "panel-row strong", `金币: ${wallet.gold}`),
+    );
     this.body.appendChild(
       el(
         "div",
         "panel-muted",
-        `木 x${bag.countOf("wood")}（${getItem("wood").sellPrice}） · 虾 x${bag.countOf("raw_shrimp")}（${getItem("raw_shrimp").sellPrice}） · 煤 x${bag.countOf("coal")}（${getItem("coal").sellPrice}）`,
+        "暂不出售商品。请在左右背包/仓库卖出物资。",
       ),
     );
-
     this.body.appendChild(
-      btn("卖出全部木头", () => this.actions?.onSellWood()),
+      el(
+        "div",
+        "panel-muted",
+        `背包 ${bag.usedSlots()}/${bag.capacity} · 仓库 ${warehouse.usedSlots()}/${warehouse.capacity}`,
+      ),
     );
-    this.body.appendChild(
-      btn("卖出全部生虾", () => this.actions?.onSellFish()),
-    );
-    this.body.appendChild(
-      btn("卖出全部煤炭", () => this.actions?.onSellCoal()),
-    );
-    this.body.appendChild(btn("卖出背包全部资源", () => this.actions?.onSellAll()));
 
     this.body.appendChild(el("div", "panel-divider", ""));
 
     this.body.appendChild(
       btn(
-        `扩背包 +${CONFIG.expandSlots} 格（${shop.bagPrice()} 金）· 当前 ${bag.capacity}`,
+        `扩背包 +${CONFIG.expandSlots}（${shop.bagPrice()} 金）`,
         () => this.actions?.onExpandBag(),
       ),
     );
     this.body.appendChild(
       btn(
-        `扩仓库 +${CONFIG.expandSlots} 格（${shop.warehousePrice()} 金）· 当前 ${warehouse.capacity}`,
+        `扩仓库 +${CONFIG.expandSlots}（${shop.warehousePrice()} 金）`,
         () => this.actions?.onExpandWarehouse(),
       ),
     );
-
     this.body.appendChild(
-      btn("关闭", () => this.actions?.onClose(), "ghost"),
+      btn("Esc 关闭", () => this.actions?.onClose(), "ghost"),
     );
   }
 }
