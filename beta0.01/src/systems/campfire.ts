@@ -60,7 +60,10 @@ export class CampfireSystem {
       return;
     }
     if (inventory.countOf("wood") <= 0) {
-      toasts.push({ text: "需要木头才能生火", ttl: TOAST_TTL });
+      toasts.push({
+        text: `需要${getItem("wood").name}才能生火`,
+        ttl: TOAST_TTL,
+      });
       return;
     }
     this.lit = true;
@@ -104,8 +107,10 @@ export class CampfireSystem {
     // 回到附近：取消余烬，继续正常烧木
     this.lingerLeft = 0;
 
+    const woodName = getItem("wood").name;
+
     if (inventory.countOf("wood") <= 0) {
-      this.extinguish("没有木头了，火熄灭了", toasts);
+      this.extinguish(`没有${woodName}了，火熄灭了`, toasts);
       return { toasts, lit: false, progress: 0 };
     }
 
@@ -122,11 +127,11 @@ export class CampfireSystem {
 
     const removed = inventory.remove("wood", 1);
     if (removed < 1) {
-      this.extinguish("没有木头了，火熄灭了", toasts);
+      this.extinguish(`没有${woodName}了，火熄灭了`, toasts);
       return { toasts, lit: false, progress: 0 };
     }
 
-    toasts.push({ text: "-1 木头", ttl: 1.6 });
+    toasts.push({ text: `-1 ${woodName}`, ttl: 1.6 });
 
     const ups = skills.addXp("firemaking", CAMPFIRE_XP);
     for (const u of ups) {
@@ -149,7 +154,7 @@ export class CampfireSystem {
     }
 
     if (inventory.countOf("wood") <= 0) {
-      this.extinguish("没有木头了，火熄灭了", toasts);
+      this.extinguish(`没有${woodName}了，火熄灭了`, toasts);
     }
 
     return {

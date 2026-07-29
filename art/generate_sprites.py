@@ -773,15 +773,32 @@ def make_sheet(sprites: dict[str, Image.Image]) -> Image.Image:
     return sheet
 
 
+def load_hand_drawn() -> dict[str, Image.Image]:
+    """Prefer hand-drawn assets migrated from v0.1 (待命名), if present."""
+    migrated = ROOT / "src" / "migrated-from-v0.1"
+    mapping = {
+        "item_wood": migrated / "wood" / "nor_wood_32.png",
+        "item_fish": migrated / "shrimp" / "nor_shrimp_32.png",
+        "tree": migrated / "trees" / "nor_trees_32x40.png",
+    }
+    out: dict[str, Image.Image] = {}
+    for name, path in mapping.items():
+        if path.is_file():
+            out[name] = Image.open(path).convert("RGBA")
+            print(f"  hand-drawn {name} <- {path.relative_to(ROOT)}")
+    return out
+
+
 def main() -> None:
     print("Generating high-detail sprites (32px)...")
+    hand = load_hand_drawn()
     sprites = {
         "player_down": make_player("down"),
         "player_up": make_player("up"),
         "player_left": make_player("left"),
         "player_right": make_player("right"),
         "slime": make_slime(),
-        "tree": make_tree(),
+        "tree": hand.get("tree") or make_tree(),
         "tree_stump": make_tree_stump(),
         "fish_spot": make_fish_spot(False),
         "fish_spot_empty": make_fish_spot(True),
@@ -796,8 +813,8 @@ def main() -> None:
         "tile_water_edge": make_tile("water_edge"),
         "tile_forest": make_tile("forest"),
         "tile_village": make_tile("village"),
-        "item_wood": make_item_wood(),
-        "item_fish": make_item_fish(),
+        "item_wood": hand.get("item_wood") or make_item_wood(),
+        "item_fish": hand.get("item_fish") or make_item_fish(),
         "focus_ring": make_focus_ring(),
     }
     for name, img in sprites.items():

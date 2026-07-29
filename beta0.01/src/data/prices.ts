@@ -10,7 +10,7 @@
  *  不要写负数；整数即可。
  *
  *  示例：
- *    wood: { sell: 2, buy: 5 },   // 木头卖 2 金，以后买 5 金
+ *    wood: { sell: 2, buy: 5 },   // 普通原木卖 2 金，以后买 5 金
  */
 
 import type { ItemId } from "./items.ts";

@@ -28,7 +28,7 @@ export type ItemDef = {
 const ITEM_BASE: Record<ItemId, ItemDef> = {
   wood: {
     id: "wood",
-    name: "木头",
+    name: "普通原木",
     stackMax: 99,
     color: "#a67c52",
   },

@@ -50,8 +50,18 @@ python art\generate_sprites.py
 | `house.png` | 村落中心小屋（48×32） |
 | `tile_*.png` | 地砖平铺 |
 | `bush.png` | 装饰灌木 |
-| `item_wood` / `item_fish` | 背包图标 |
+| `item_wood` / `item_fish` | 背包图标（已用手绘 `nor_wood_32` / `nor_shrimp_32`） |
+| `tree.png` | 可砍树（已用 `nor_trees_32x40`） |
 | `focus_ring.png` | 互动高亮框 |
+
+### 从 v0.1（待命名）迁入的手绘资源
+
+完整多尺寸备份在：
+
+- `beta0.01/public/assets/wood/` · `shrimp/` · `trees/` · `maps/`
+- `art/src/migrated-from-v0.1/`（源备份）
+
+`generate_sprites.py` 若存在上述备份，会优先用手绘图覆盖 `item_wood` / `item_fish` / `tree`，不会被程序生成稿冲掉。
 
 ## 和游戏代码的关系
 
