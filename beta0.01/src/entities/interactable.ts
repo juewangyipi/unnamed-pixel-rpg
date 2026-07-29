@@ -2,7 +2,11 @@ import type { ChunkId } from "../world/chunk.ts";
 import type { ItemId } from "../data/items.ts";
 import type { SkillId } from "../data/skills.ts";
 
-export type InteractKind = "tree" | "fish_spot";
+export type InteractKind =
+  | "tree"
+  | "fish_spot"
+  | "rune_node"
+  | "copper_node";
 
 /** hold：按住才推进；auto：点一下后自动持续采集 */
 export type GatherMode = "hold" | "auto";
@@ -19,7 +23,7 @@ export type Interactable = {
   depletedUntil: number;
   /** 当前这一下采集进度 0～1（满一次掉 1 份资源） */
   progress: number;
-  /** 本周期已成功采集次数；达到 hitsToDeplete 后变树桩/耗尽 */
+  /** 本周期已成功采集次数；达到 hitsToDeplete 后耗尽 */
   hits: number;
 };
 
@@ -33,7 +37,7 @@ export type GatherProfile = {
   /** 每一次采集所需秒数 */
   duration: number;
   /**
-   * 需要成功几次才耗尽（树桩等）。
+   * 需要成功几次才耗尽（树桩/矿点等）。
    * 0 = 永不耗尽（可一直采）
    */
   hitsToDeplete: number;
@@ -65,6 +69,30 @@ export const GATHER: Record<InteractKind, GatherProfile> = {
     respawn: 0,
     mode: "auto",
     label: "钓鱼",
+  },
+  /** 符文精华：2s 一次，10 次后冷却 10s */
+  rune_node: {
+    skillId: "mining",
+    itemId: "rune_essence",
+    amount: 1,
+    xp: 5,
+    duration: 2,
+    hitsToDeplete: 10,
+    respawn: 10,
+    mode: "auto",
+    label: "采符文",
+  },
+  /** 铜矿石：5s 一次，10 次后冷却 10s */
+  copper_node: {
+    skillId: "mining",
+    itemId: "copper_ore",
+    amount: 1,
+    xp: 7,
+    duration: 5,
+    hitsToDeplete: 10,
+    respawn: 10,
+    mode: "auto",
+    label: "采铜矿",
   },
 };
 

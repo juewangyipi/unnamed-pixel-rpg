@@ -1,5 +1,10 @@
 /** 地图块：邻接表驱动切屏，勿在逻辑里写死地图名。 */
-export type ChunkId = "village" | "grassland" | "riverside" | "forest";
+export type ChunkId =
+  | "village"
+  | "grassland"
+  | "riverside"
+  | "forest"
+  | "mine";
 
 export type ChunkNeighbors = {
   up?: ChunkId;

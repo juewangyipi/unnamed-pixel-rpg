@@ -8,7 +8,13 @@ import {
   type ItemPrice,
 } from "./prices.ts";
 
-export type ItemId = "wood" | "raw_shrimp" | "cooked_shrimp" | "coal";
+export type ItemId =
+  | "wood"
+  | "raw_shrimp"
+  | "cooked_shrimp"
+  | "coal"
+  | "rune_essence"
+  | "copper_ore";
 
 export type ItemDef = {
   id: ItemId;
@@ -44,6 +50,18 @@ const ITEM_BASE: Record<ItemId, ItemDef> = {
     stackMax: 99,
     color: "#3a3a42",
   },
+  rune_essence: {
+    id: "rune_essence",
+    name: "符文精华",
+    stackMax: 99,
+    color: "#6b8cff",
+  },
+  copper_ore: {
+    id: "copper_ore",
+    name: "铜矿石",
+    stackMax: 99,
+    color: "#c4783a",
+  },
 };
 
 /** 物品基础定义（无价格） */
@@ -58,6 +76,8 @@ export const SHOP_ITEM_IDS: ItemId[] = [
   "raw_shrimp",
   "cooked_shrimp",
   "coal",
+  "rune_essence",
+  "copper_ore",
 ];
 
 export function getItem(id: ItemId): ItemDef {

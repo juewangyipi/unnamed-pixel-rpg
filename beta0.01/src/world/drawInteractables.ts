@@ -19,8 +19,12 @@ export function drawInteractables(
 
     if (it.kind === "tree") {
       drawTree(ctx, it, available, focused);
-    } else {
+    } else if (it.kind === "fish_spot") {
       drawFishSpot(ctx, it, available, focused);
+    } else if (it.kind === "rune_node") {
+      drawMineNode(ctx, it, available, focused, "rune");
+    } else if (it.kind === "copper_node") {
+      drawMineNode(ctx, it, available, focused, "copper");
     }
 
     if (available && (it.progress > 0 || (active && active.id === it.id))) {
@@ -129,6 +133,61 @@ function drawFishSpot(
     );
     ctx.fill();
   }
+}
+
+/** 矿点：符文（蓝）/ 铜（橙）；耗尽变暗灰色 */
+function drawMineNode(
+  ctx: CanvasRenderingContext2D,
+  it: Interactable,
+  available: boolean,
+  focused: boolean,
+  variant: "rune" | "copper",
+): void {
+  const { x, y, size } = it;
+  const cx = x + size / 2;
+  const cy = y + size * 0.55;
+  drawShadow(ctx, cx, y + size - 2, size * 0.36, size * 0.12);
+  if (focused) drawFocus(ctx, x, y, size);
+
+  const base = available ? "#4a4a55" : "#2a2a30";
+  const glow =
+    variant === "rune"
+      ? available
+        ? "#6b8cff"
+        : "#3a4060"
+      : available
+        ? "#c4783a"
+        : "#5a4030";
+
+  // 岩块
+  ctx.fillStyle = base;
+  ctx.beginPath();
+  ctx.moveTo(cx - size * 0.32, cy + size * 0.12);
+  ctx.lineTo(cx - size * 0.2, cy - size * 0.28);
+  ctx.lineTo(cx + size * 0.1, cy - size * 0.35);
+  ctx.lineTo(cx + size * 0.35, cy - size * 0.08);
+  ctx.lineTo(cx + size * 0.28, cy + size * 0.2);
+  ctx.lineTo(cx - size * 0.15, cy + size * 0.28);
+  ctx.closePath();
+  ctx.fill();
+
+  // 矿脉高光
+  ctx.fillStyle = glow;
+  ctx.globalAlpha = available ? 0.9 : 0.35;
+  ctx.beginPath();
+  ctx.moveTo(cx - size * 0.08, cy - size * 0.2);
+  ctx.lineTo(cx + size * 0.12, cy - size * 0.05);
+  ctx.lineTo(cx + size * 0.02, cy + size * 0.1);
+  ctx.lineTo(cx - size * 0.15, cy - size * 0.02);
+  ctx.closePath();
+  ctx.fill();
+  if (variant === "rune" && available) {
+    ctx.fillStyle = "rgba(180, 210, 255, 0.7)";
+    ctx.beginPath();
+    ctx.arc(cx + 2, cy - 4, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
 }
 
 function drawProgress(ctx: CanvasRenderingContext2D, it: Interactable): void {

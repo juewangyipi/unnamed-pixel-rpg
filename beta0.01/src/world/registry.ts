@@ -2,15 +2,15 @@ import type { Chunk, ChunkId } from "./chunk.ts";
 import { CONFIG } from "../core/config.ts";
 
 /**
- * 四图注册表。邻接：
+ * 地图邻接：
  *
- *           forest
- *             │
- * grassland ─ village
- *             │
- *         riverside
+ *              forest
+ *                │
+ *   mine ── village ── grassland
+ *                │
+ *            riverside
  *
- * 初始村落：往上进森林，往下到河边；草地仍在东侧过渡。
+ * 村子：上森林 · 下河边 · 右草地 · 左矿区
  */
 const CHUNKS: Record<ChunkId, Chunk> = {
   village: {
@@ -20,7 +20,12 @@ const CHUNKS: Record<ChunkId, Chunk> = {
     gridColor: "#35533e",
     widthTiles: CONFIG.viewTilesW,
     heightTiles: CONFIG.viewTilesH,
-    neighbors: { up: "forest", down: "riverside", right: "grassland" },
+    neighbors: {
+      up: "forest",
+      down: "riverside",
+      right: "grassland",
+      left: "mine",
+    },
   },
   grassland: {
     id: "grassland",
@@ -48,6 +53,15 @@ const CHUNKS: Record<ChunkId, Chunk> = {
     widthTiles: CONFIG.viewTilesW,
     heightTiles: CONFIG.viewTilesH,
     neighbors: { down: "village" },
+  },
+  mine: {
+    id: "mine",
+    name: "矿区",
+    groundColor: "#3a3a42",
+    gridColor: "#2e2e36",
+    widthTiles: CONFIG.viewTilesW,
+    heightTiles: CONFIG.viewTilesH,
+    neighbors: { right: "village" },
   },
 };
 

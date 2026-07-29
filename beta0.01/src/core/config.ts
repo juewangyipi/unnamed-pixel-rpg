@@ -16,8 +16,8 @@ export const CONFIG = {
   startingGold: 15,
   maxHp: 100,
 
-  /** 一天时长（真实秒） */
-  dayLengthSec: 120,
+  /** 一天时长（真实秒）；180 = 3 分钟一天 */
+  dayLengthSec: 180,
 
   /** 自动存档间隔（秒） */
   autosaveSec: 12,

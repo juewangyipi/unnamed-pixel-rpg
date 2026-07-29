@@ -29,8 +29,10 @@ export const ITEM_PRICES: Record<ItemId, ItemPrice> = {
   //          卖价  买价（暂未开放）
   wood: { sell: 2, buy: 5 },
   raw_shrimp: { sell: 3, buy: 12 },
-  cooked_shrimp: { sell: 5, buy: 20 },
-  coal: { sell: 5, buy: 20 },
+  cooked_shrimp: { sell: 6, buy: 20 },
+  coal: { sell: 6, buy: 20 },
+  rune_essence: { sell: 4, buy: 12 },
+  copper_ore: { sell: 5, buy: 15 },
 };
 
 // ---------- 读取接口（代码里用，一般不用改） ----------

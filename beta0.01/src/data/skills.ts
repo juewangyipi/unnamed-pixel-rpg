@@ -1,5 +1,10 @@
-/** 生活技能定义（beta0.01：砍树、钓鱼、生火、烹饪） */
-export type SkillId = "woodcutting" | "fishing" | "firemaking" | "cooking";
+/** 生活技能定义（beta0.01：砍树、钓鱼、生火、烹饪、采矿） */
+export type SkillId =
+  | "woodcutting"
+  | "fishing"
+  | "firemaking"
+  | "cooking"
+  | "mining";
 
 export type SkillDef = {
   id: SkillId;
@@ -11,6 +16,7 @@ export const SKILLS: Record<SkillId, SkillDef> = {
   fishing: { id: "fishing", name: "钓鱼" },
   firemaking: { id: "firemaking", name: "生火" },
   cooking: { id: "cooking", name: "烹饪" },
+  mining: { id: "mining", name: "采矿" },
 };
 
 /** 升到 nextLevel 所需经验（从当前 level 升到 level+1） */

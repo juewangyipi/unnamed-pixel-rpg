@@ -15,6 +15,8 @@ const TILE_FOR_CHUNK: Record<string, SpriteName> = {
   grassland: "tile_grass",
   riverside: "tile_grass",
   forest: "tile_forest",
+  // 矿区暂用村砖 + 装饰，缺专用矿砖时不崩
+  mine: "tile_village",
 };
 
 /**
@@ -159,6 +161,48 @@ function drawDecor(
           ctx.fillStyle = "rgba(30, 60, 35, 0.45)";
           ctx.fillRect(tx * tile + 2, ty * tile + 2, tile - 4, tile - 4);
         }
+      }
+      break;
+    }
+    case "mine": {
+      // 岩地暗色叠层 + 碎石点缀
+      ctx.fillStyle = "rgba(20, 20, 28, 0.35)";
+      ctx.fillRect(0, 0, width, height);
+      // 通往村子的东向小路
+      paintPathRow(ctx, height / 2 - tile / 2, width, tile);
+      const rocks: [number, number][] = [
+        [2, 2],
+        [17, 2],
+        [1, 12],
+        [18, 13],
+        [9, 1],
+        [11, 14],
+      ];
+      for (const [tx, ty] of rocks) {
+        ctx.fillStyle = "#4a4a55";
+        ctx.beginPath();
+        ctx.ellipse(
+          tx * tile + tile * 0.5,
+          ty * tile + tile * 0.55,
+          tile * 0.28,
+          tile * 0.18,
+          0,
+          0,
+          Math.PI * 2,
+        );
+        ctx.fill();
+        ctx.fillStyle = "#5a5a68";
+        ctx.beginPath();
+        ctx.ellipse(
+          tx * tile + tile * 0.42,
+          ty * tile + tile * 0.48,
+          tile * 0.14,
+          tile * 0.1,
+          -0.3,
+          0,
+          Math.PI * 2,
+        );
+        ctx.fill();
       }
       break;
     }
