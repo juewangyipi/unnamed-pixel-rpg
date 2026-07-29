@@ -26,3 +26,6 @@ Thumbs.db
 
 # Package lock at monorepo root if accidental
 # Keep v0.1/package-lock.json
+
+# Local Netlify folder
+.netlify
