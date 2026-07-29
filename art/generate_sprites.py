@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-v0.1.1 high-detail pixel sprites (32px base).
+beta0.01 high-detail pixel sprites (32px base).
 Nordic-fantasy cozy palette · outlines · multi-shade · transparent BG.
 """
 from __future__ import annotations
@@ -11,7 +11,7 @@ import math
 import random
 
 ROOT = Path(__file__).resolve().parent
-OUT_PNG = ROOT.parent / "v0.1" / "public" / "assets"
+OUT_PNG = ROOT.parent / "beta0.01" / "public" / "assets"
 OUT_SRC = ROOT / "src"
 OUT_PNG.mkdir(parents=True, exist_ok=True)
 OUT_SRC.mkdir(parents=True, exist_ok=True)

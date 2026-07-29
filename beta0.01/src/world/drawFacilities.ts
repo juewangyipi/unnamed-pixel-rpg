@@ -6,10 +6,17 @@ import {
   type SpriteName,
 } from "../assets/sprites.ts";
 
+export type CampfireDrawState = {
+  lit: boolean;
+  progress: number;
+  timeSec: number;
+};
+
 export function drawFacilities(
   ctx: CanvasRenderingContext2D,
   list: Facility[],
   focusId: string | null,
+  campfireState?: CampfireDrawState | null,
 ): void {
   for (const f of list) {
     const focused = f.id === focusId;
@@ -22,6 +29,9 @@ export function drawFacilities(
         break;
       case "save_point":
         drawFacility(ctx, f, focused, "save_point", fallbackSave);
+        break;
+      case "campfire":
+        drawCampfire(ctx, f, focused, campfireState ?? null);
         break;
     }
   }
@@ -98,6 +108,79 @@ function fallbackSave(ctx: CanvasRenderingContext2D, f: Facility): void {
     Math.PI * 2,
   );
   ctx.fill();
+}
+
+function drawCampfire(
+  ctx: CanvasRenderingContext2D,
+  f: Facility,
+  focused: boolean,
+  state: CampfireDrawState | null,
+): void {
+  const lit = state?.lit ?? false;
+  const progress = state?.progress ?? 0;
+  const t = state?.timeSec ?? 0;
+  const cx = f.x + f.size / 2;
+  const cy = f.y + f.size * 0.62;
+
+  drawShadow(ctx, cx, f.y + f.size - 1, f.size * 0.4, f.size * 0.12);
+  if (focused) strokeFocus(ctx, f);
+
+  // 石圈
+  ctx.fillStyle = "#6a655c";
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2 + 0.2;
+    const rx = cx + Math.cos(a) * f.size * 0.32;
+    const ry = cy + Math.sin(a) * f.size * 0.18;
+    ctx.beginPath();
+    ctx.ellipse(rx, ry, 3.2, 2.2, a, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // 木柴
+  ctx.strokeStyle = lit ? "#5a3a22" : "#4a4038";
+  ctx.lineWidth = 3;
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.moveTo(cx - 8, cy + 2);
+  ctx.lineTo(cx + 8, cy - 4);
+  ctx.moveTo(cx + 8, cy + 2);
+  ctx.lineTo(cx - 8, cy - 4);
+  ctx.stroke();
+
+  if (lit) {
+    const flicker = 1 + Math.sin(t * 14) * 0.08 + Math.sin(t * 23) * 0.05;
+    const h = f.size * 0.42 * flicker;
+    // 外焰
+    ctx.fillStyle = "#e85d2a";
+    ctx.beginPath();
+    ctx.moveTo(cx - 6, cy);
+    ctx.quadraticCurveTo(cx - 7, cy - h * 0.55, cx, cy - h);
+    ctx.quadraticCurveTo(cx + 7, cy - h * 0.55, cx + 6, cy);
+    ctx.closePath();
+    ctx.fill();
+    // 内焰
+    ctx.fillStyle = "#ffd36a";
+    ctx.beginPath();
+    ctx.moveTo(cx - 3, cy - 1);
+    ctx.quadraticCurveTo(cx - 2, cy - h * 0.45, cx, cy - h * 0.72);
+    ctx.quadraticCurveTo(cx + 2, cy - h * 0.45, cx + 3, cy - 1);
+    ctx.closePath();
+    ctx.fill();
+
+    // 燃烧进度条
+    const bw = f.size;
+    const bh = 3;
+    const bx = f.x;
+    const by = f.y + f.size + 3;
+    ctx.fillStyle = "rgba(0,0,0,0.55)";
+    ctx.fillRect(bx - 1, by - 1, bw + 2, bh + 2);
+    ctx.fillStyle = "#3a2010";
+    ctx.fillRect(bx, by, bw, bh);
+    ctx.fillStyle = "#ff9a3c";
+    ctx.fillRect(bx, by, Math.round(bw * Math.min(1, progress)), bh);
+  }
+
+  drawLabel(ctx, lit ? "篝火（燃）" : "篝火", cx, f.y - 4);
 }
 
 function strokeFocus(ctx: CanvasRenderingContext2D, f: Facility): void {

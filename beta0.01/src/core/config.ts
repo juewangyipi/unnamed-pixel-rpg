@@ -1,7 +1,8 @@
 /** 全局配置：格子、版本、键位、速度等。系统尽量读这里，少写魔法数。 */
 export const CONFIG = {
-  version: "v0.1.1",
-  title: "Game v0.1",
+  /** 正式故事背景落地前用 beta；有完整背景后再升到 v0.1 */
+  version: "beta0.01",
+  title: "Game beta0.01",
 
   /** 像素格边长；美术按 32px 绘制 */
   tileSize: 32,
@@ -34,7 +35,7 @@ export const CONFIG = {
   warehouseExpandBasePrice: 25,
   warehouseExpandPriceStep: 15,
 
-  saveKey: "game-v0.1-save",
+  saveKey: "game-beta0.01-save",
 
   keys: {
     up: ["KeyW", "ArrowUp"],

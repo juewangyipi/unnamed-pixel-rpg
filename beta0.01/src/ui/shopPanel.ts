@@ -7,6 +7,7 @@ import { getItem } from "../data/items.ts";
 export type ShopActions = {
   onSellWood: () => void;
   onSellFish: () => void;
+  onSellCoal: () => void;
   onSellAll: () => void;
   onExpandBag: () => void;
   onExpandWarehouse: () => void;
@@ -63,7 +64,7 @@ export class ShopPanel {
       el(
         "div",
         "panel-muted",
-        `木头 x${bag.countOf("wood")}（${getItem("wood").sellPrice}金/个） · 生虾 x${bag.countOf("raw_shrimp")}（${getItem("raw_shrimp").sellPrice}金/个）`,
+        `木 x${bag.countOf("wood")}（${getItem("wood").sellPrice}） · 虾 x${bag.countOf("raw_shrimp")}（${getItem("raw_shrimp").sellPrice}） · 煤 x${bag.countOf("coal")}（${getItem("coal").sellPrice}）`,
       ),
     );
 
@@ -72,6 +73,9 @@ export class ShopPanel {
     );
     this.body.appendChild(
       btn("卖出全部生虾", () => this.actions?.onSellFish()),
+    );
+    this.body.appendChild(
+      btn("卖出全部煤炭", () => this.actions?.onSellCoal()),
     );
     this.body.appendChild(btn("卖出背包全部资源", () => this.actions?.onSellAll()));
 

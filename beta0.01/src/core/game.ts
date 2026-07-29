@@ -15,6 +15,10 @@ import { InteractionSystem, type Toast } from "../systems/interaction.ts";
 import { InteractableStore } from "../systems/interactableStore.ts";
 import { FacilityStore } from "../systems/facilityStore.ts";
 import { findFacilityFocus } from "../systems/facilityInteraction.ts";
+import {
+  CampfireSystem,
+  isNearCampfire,
+} from "../systems/campfire.ts";
 import { Wallet } from "../systems/wallet.ts";
 import { Shop } from "../systems/shop.ts";
 import { TimeOfDay } from "../systems/timeOfDay.ts";
@@ -49,6 +53,7 @@ export class Game {
   private readonly interaction = new InteractionSystem();
   private readonly interactables = new InteractableStore();
   private readonly facilities = new FacilityStore();
+  private readonly campfire = new CampfireSystem();
   private readonly invPanel: InventoryPanel;
   private readonly shopPanel: ShopPanel;
   private readonly warehousePanel: WarehousePanel;
@@ -69,6 +74,9 @@ export class Game {
   private activeInteract = null as ReturnType<
     InteractionSystem["update"]
   >["active"];
+  /** 昼夜遮罩离屏层：用于篝火挖光 */
+  private lightLayer: HTMLCanvasElement | null = null;
+  private lightLayerCtx: CanvasRenderingContext2D | null = null;
   private readonly onBeforeUnload: () => void;
 
   constructor(canvas: HTMLCanvasElement, hud: HTMLElement, app: HTMLElement) {
@@ -131,6 +139,10 @@ export class Game {
       },
       onSellFish: () => {
         const r = this.shop.sellAll(this.inventory, this.wallet, "raw_shrimp");
+        this.afterShopTrade(r);
+      },
+      onSellCoal: () => {
+        const r = this.shop.sellAll(this.inventory, this.wallet, "coal");
         this.afterShopTrade(r);
       },
       onSellAll: () => {
@@ -326,10 +338,33 @@ export class Game {
       if (this.shopPanel.isOpen || this.warehousePanel.isOpen) {
         this.closeAllPanels();
         usedInteractForFacility = true;
+      } else if (this.focusFacility?.kind === "campfire") {
+        const lightToasts: Toast[] = [];
+        this.campfire.tryToggle(this.inventory, lightToasts);
+        this.toasts.push(...lightToasts);
+        usedInteractForFacility = true;
       } else if (this.focusFacility) {
         this.openFacility(this.focusFacility);
         usedInteractForFacility = true;
       }
+    }
+
+    // 篝火燃烧（离开范围 / 没木头会熄灭）
+    const campfireFac =
+      facilityList.find((f) => f.kind === "campfire") ?? null;
+    const nearFire =
+      !!campfireFac && isNearCampfire(this.player, campfireFac);
+    const fireResult = this.campfire.update({
+      dt,
+      player: this.player,
+      campfire: campfireFac,
+      inventory: this.inventory,
+      skills: this.skills,
+      inRange: nearFire,
+    });
+    if (fireResult.toasts.length) {
+      this.toasts.push(...fireResult.toasts);
+      this.bagDirty = true;
     }
 
     // 采集：树/鱼点一下持续采（开店/仓时不采）
@@ -392,6 +427,8 @@ export class Game {
       case "save_point":
         this.activateSavePoint();
         break;
+      case "campfire":
+        break;
     }
   }
 
@@ -424,7 +461,11 @@ export class Game {
     const facilityList = this.facilities.forChunk(world.currentId);
 
     renderChunkBackground(ctx, chunk, canvas.width, canvas.height);
-    drawFacilities(ctx, facilityList, this.focusFacility?.id ?? null);
+    drawFacilities(ctx, facilityList, this.focusFacility?.id ?? null, {
+      lit: this.campfire.lit,
+      progress: this.campfire.progress,
+      timeSec: performance.now() / 1000,
+    });
     drawInteractables(
       ctx,
       gatherList,
@@ -458,6 +499,10 @@ export class Game {
 
   private promptText(): string | null {
     if (this.shopPanel.isOpen || this.warehousePanel.isOpen) return null;
+    if (this.focusFacility?.kind === "campfire") {
+      if (this.campfire.lit) return "E · 熄灭篝火";
+      return "E · 点燃篝火";
+    }
     if (this.focusFacility) {
       return `E · ${this.focusFacility.label}`;
     }
@@ -539,31 +584,124 @@ export class Game {
     }
   }
 
+  private ensureLightLayer(
+    w: number,
+    h: number,
+  ): CanvasRenderingContext2D {
+    if (
+      !this.lightLayer ||
+      !this.lightLayerCtx ||
+      this.lightLayer.width !== w ||
+      this.lightLayer.height !== h
+    ) {
+      this.lightLayer = document.createElement("canvas");
+      this.lightLayer.width = w;
+      this.lightLayer.height = h;
+      const c = this.lightLayer.getContext("2d");
+      if (!c) throw new Error("Campfire light canvas unavailable");
+      this.lightLayerCtx = c;
+    }
+    return this.lightLayerCtx;
+  }
+
+  /** 当前块点燃的篝火中心；没有则 null */
+  private litCampfireCenter(): { x: number; y: number } | null {
+    if (!this.campfire.lit) return null;
+    const f = this.facilities
+      .forChunk(this.world.currentId)
+      .find((x) => x.kind === "campfire");
+    if (!f) return null;
+    return {
+      x: f.x + f.size / 2,
+      y: f.y + f.size * 0.55,
+    };
+  }
+
   private drawDayOverlay(): void {
     const { ctx, canvas } = this;
+    const w = canvas.width;
+    const h = canvas.height;
     const d = this.time.darkness();
+    const light = this.litCampfireCenter();
+    const t = performance.now() / 1000;
+    const flicker =
+      1 + Math.sin(t * 12) * 0.05 + Math.sin(t * 21) * 0.035;
+    /** 光照半径（格） */
+    const lightRadius = CONFIG.tileSize * 5.2 * flicker;
+
+    // 昼夜压暗；点燃篝火时在中心挖出柔和亮区
     if (d > 0) {
       const phase = this.time.phase();
+      const lctx = this.ensureLightLayer(w, h);
+      lctx.setTransform(1, 0, 0, 1, 0, 0);
+      lctx.globalCompositeOperation = "source-over";
+      lctx.clearRect(0, 0, w, h);
       if (phase === "dusk" || phase === "dawn") {
-        ctx.fillStyle = `rgba(48, 22, 36, ${d * 0.85})`;
+        lctx.fillStyle = `rgba(48, 22, 36, ${d * 0.85})`;
       } else {
-        ctx.fillStyle = `rgba(6, 12, 36, ${d})`;
+        lctx.fillStyle = `rgba(6, 12, 36, ${d})`;
       }
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      lctx.fillRect(0, 0, w, h);
+
+      if (light) {
+        lctx.globalCompositeOperation = "destination-out";
+        const hole = lctx.createRadialGradient(
+          light.x,
+          light.y,
+          lightRadius * 0.12,
+          light.x,
+          light.y,
+          lightRadius,
+        );
+        // 中心完全抠掉夜晚遮罩，边缘渐隐
+        hole.addColorStop(0, "rgba(0,0,0,1)");
+        hole.addColorStop(0.35, "rgba(0,0,0,0.85)");
+        hole.addColorStop(0.7, "rgba(0,0,0,0.35)");
+        hole.addColorStop(1, "rgba(0,0,0,0)");
+        lctx.fillStyle = hole;
+        lctx.fillRect(0, 0, w, h);
+        lctx.globalCompositeOperation = "source-over";
+      }
+
+      ctx.drawImage(this.lightLayer!, 0, 0);
     }
+
+    // 点燃时叠加暖色光晕（白天也略亮，夜晚更明显）
+    if (light) {
+      ctx.save();
+      ctx.globalCompositeOperation = "screen";
+      const warmCore = 0.28 + d * 0.35;
+      const warmMid = 0.14 + d * 0.22;
+      const warm = ctx.createRadialGradient(
+        light.x,
+        light.y,
+        0,
+        light.x,
+        light.y,
+        lightRadius * 1.05,
+      );
+      warm.addColorStop(0, `rgba(255, 210, 120, ${warmCore})`);
+      warm.addColorStop(0.22, `rgba(255, 150, 60, ${warmMid})`);
+      warm.addColorStop(0.55, `rgba(220, 90, 30, ${0.08 + d * 0.1})`);
+      warm.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = warm;
+      ctx.fillRect(0, 0, w, h);
+      ctx.restore();
+    }
+
     // 轻 vignette，让画面更有「绘本」层次
     const g = ctx.createRadialGradient(
-      canvas.width / 2,
-      canvas.height / 2,
-      canvas.height * 0.25,
-      canvas.width / 2,
-      canvas.height / 2,
-      canvas.width * 0.72,
+      w / 2,
+      h / 2,
+      h * 0.25,
+      w / 2,
+      h / 2,
+      w * 0.72,
     );
     g.addColorStop(0, "rgba(0,0,0,0)");
     g.addColorStop(1, "rgba(0,0,0,0.22)");
     ctx.fillStyle = g;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillRect(0, 0, w, h);
   }
 
   private drawHpBar(): void {
@@ -611,9 +749,9 @@ export class Game {
       `地图: ${chunk.name} · ${this.time.phaseLabel()}`,
       `金 ${this.wallet.gold} · HP ${Math.ceil(this.hp)}/${CONFIG.maxHp}`,
       `技能: ${this.skills.summaryLine()}`,
-      `背包 ${inv.usedSlots()}/${inv.capacity} 仓 ${this.warehouse.usedSlots()}/${this.warehouse.capacity} · 木${inv.countOf("wood")} 虾${inv.countOf("raw_shrimp")}`,
+      `背包 ${inv.usedSlots()}/${inv.capacity} 仓 ${this.warehouse.usedSlots()}/${this.warehouse.capacity} · 木${inv.countOf("wood")} 虾${inv.countOf("raw_shrimp")} 煤${inv.countOf("coal")}`,
       `出口: ${listExits(chunk)}`,
-      `E 互动 · B 背包 · 村内店/仓/存档点`,
+      `E 互动 · B 背包 · 村内店/仓/篝火/存档点`,
     ];
 
     if (this.transitionFlash > 0 && this.world.lastTransition) {

@@ -1,10 +1,10 @@
-# 美术资源说明（v0.1）
+# 美术资源说明（beta0.01）
 
 ## 怎么改图（推荐流程）
 
 1. 用 **LibreSprite** 打开 `art/ase/*.ase`（每个精灵一份源文件）
 2. 改完后 **文件 → 导出 → 导出为 PNG**，覆盖  
-   `v0.1/public/assets/同名.png`
+   `beta0.01/public/assets/同名.png`
 3. 刷新游戏页面即可看到变化（`npm run dev` 下）
 
 也可用命令行从 PNG 再生成 ase：
@@ -23,7 +23,7 @@ python art\generate_sprites.py
 
 会写出：
 
-- `v0.1/public/assets/*.png` — 游戏实际加载
+- `beta0.01/public/assets/*.png` — 游戏实际加载
 - `art/src/*.png` — 源备份
 
 然后再用 LibreSprite 转 ase（或重跑之前的批量转换）。
@@ -55,6 +55,6 @@ python art\generate_sprites.py
 
 ## 和游戏代码的关系
 
-- 加载：`v0.1/src/assets/sprites.ts`
+- 加载：`beta0.01/src/assets/sprites.ts`
 - 绘制：`world/renderChunk.ts`、`drawInteractables.ts`、`drawFacilities.ts`、`core/game.ts`（玩家/史莱姆）
 - 缺图时自动回退到旧的色块绘制，不会白屏

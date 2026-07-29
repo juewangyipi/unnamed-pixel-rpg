@@ -1,5 +1,5 @@
 /** 物品定义：尽量纯数据，系统只读 id。 */
-export type ItemId = "wood" | "raw_shrimp";
+export type ItemId = "wood" | "raw_shrimp" | "coal";
 
 export type ItemDef = {
   id: ItemId;
@@ -26,6 +26,13 @@ export const ITEMS: Record<ItemId, ItemDef> = {
     stackMax: 99,
     sellPrice: 5,
     color: "#e07a5f",
+  },
+  coal: {
+    id: "coal",
+    name: "煤炭",
+    stackMax: 99,
+    sellPrice: 4,
+    color: "#3a3a42",
   },
 };
 

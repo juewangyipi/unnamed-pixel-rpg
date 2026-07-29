@@ -18,6 +18,7 @@ export class Skills {
   private readonly states: Record<SkillId, SkillState> = {
     woodcutting: { level: 1, xp: 0 },
     fishing: { level: 1, xp: 0 },
+    firemaking: { level: 1, xp: 0 },
   };
 
   get(id: SkillId): SkillState {
@@ -51,6 +52,7 @@ export class Skills {
     return {
       woodcutting: { ...this.states.woodcutting },
       fishing: { ...this.states.fishing },
+      firemaking: { ...this.states.firemaking },
     };
   }
 

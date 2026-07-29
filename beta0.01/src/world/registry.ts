@@ -2,8 +2,15 @@ import type { Chunk, ChunkId } from "./chunk.ts";
 import { CONFIG } from "../core/config.ts";
 
 /**
- * 四图注册表。邻接（与架构一致）：
- *   village ── grassland ── riverside ── forest
+ * 四图注册表。邻接：
+ *
+ *           forest
+ *             │
+ * grassland ─ village
+ *             │
+ *         riverside
+ *
+ * 初始村落：往上进森林，往下到河边；草地仍在东侧过渡。
  */
 const CHUNKS: Record<ChunkId, Chunk> = {
   village: {
@@ -13,7 +20,7 @@ const CHUNKS: Record<ChunkId, Chunk> = {
     gridColor: "#35533e",
     widthTiles: CONFIG.viewTilesW,
     heightTiles: CONFIG.viewTilesH,
-    neighbors: { right: "grassland" },
+    neighbors: { up: "forest", down: "riverside", right: "grassland" },
   },
   grassland: {
     id: "grassland",
@@ -22,7 +29,7 @@ const CHUNKS: Record<ChunkId, Chunk> = {
     gridColor: "#405f32",
     widthTiles: CONFIG.viewTilesW,
     heightTiles: CONFIG.viewTilesH,
-    neighbors: { left: "village", right: "riverside" },
+    neighbors: { left: "village" },
   },
   riverside: {
     id: "riverside",
@@ -31,7 +38,7 @@ const CHUNKS: Record<ChunkId, Chunk> = {
     gridColor: "#32545e",
     widthTiles: CONFIG.viewTilesW,
     heightTiles: CONFIG.viewTilesH,
-    neighbors: { left: "grassland", right: "forest" },
+    neighbors: { up: "village" },
   },
   forest: {
     id: "forest",
@@ -40,7 +47,7 @@ const CHUNKS: Record<ChunkId, Chunk> = {
     gridColor: "#28402b",
     widthTiles: CONFIG.viewTilesW,
     heightTiles: CONFIG.viewTilesH,
-    neighbors: { left: "riverside" },
+    neighbors: { down: "village" },
   },
 };
 
