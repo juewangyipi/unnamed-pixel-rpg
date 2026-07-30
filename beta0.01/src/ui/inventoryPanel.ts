@@ -1,5 +1,10 @@
 import type { Inventory } from "../systems/inventory.ts";
-import { getItem, type ItemId } from "../data/items.ts";
+import {
+  formatItemCategories,
+  getItem,
+  type ItemId,
+} from "../data/items.ts";
+import { getFoodHeal, isEdible } from "../data/foods.ts";
 import { getSellPrice } from "../data/prices.ts";
 
 export type InventoryPanelActions = {
@@ -7,11 +12,13 @@ export type InventoryPanelActions = {
   onSellOneOf?: (itemId: ItemId) => void;
   /** 商店模式：右键卖全部 */
   onSellAllOf?: (itemId: ItemId) => void;
+  /** 普通模式：左键食用食物 */
+  onEat?: (itemId: ItemId) => void;
 };
 
 /**
  * DOM 背包面板。
- * 普通模式只展示；商店联动时右键卖全部。
+ * 普通模式：食物左键食用；商店联动时买卖。
  */
 export class InventoryPanel {
   private readonly root: HTMLElement;
@@ -40,7 +47,7 @@ export class InventoryPanel {
 
     this.hint = document.createElement("div");
     this.hint.className = "inv-hint";
-    this.hint.textContent = "B / I 关闭";
+    this.hint.textContent = "食物左键食用 · B / I 关闭";
 
     this.root.append(title, this.meta, this.grid, this.hint);
     host.appendChild(this.root);
@@ -60,7 +67,7 @@ export class InventoryPanel {
     this.root.classList.toggle("shop-linked", linked);
     this.hint.textContent = linked
       ? "左键卖1个 · 右键卖全部"
-      : "B / I 关闭";
+      : "食物左键食用 · B / I 关闭";
   }
 
   toggle(): void {
@@ -79,9 +86,12 @@ export class InventoryPanel {
     inv.slots.forEach((slot, index) => {
       const cell = document.createElement("button");
       cell.type = "button";
-      cell.className = "inv-slot" + (this.shopLinked && slot ? " clickable" : "");
       if (slot) {
         const def = getItem(slot.id);
+        const cats = formatItemCategories(slot.id);
+        const edible = !this.shopLinked && isEdible(slot.id);
+        cell.className =
+          "inv-slot" + (this.shopLinked || edible ? " clickable" : "");
         cell.style.borderColor = def.color;
         const iconFile = itemIcon(slot.id);
         if (iconFile) {
@@ -102,13 +112,16 @@ export class InventoryPanel {
         const label = document.createElement("span");
         label.className = "inv-label";
         label.textContent = def.name;
+        const catEl = document.createElement("span");
+        catEl.className = "inv-cat";
+        catEl.textContent = cats;
         const count = document.createElement("span");
         count.className = "inv-count";
         count.textContent = String(slot.count);
-        cell.append(label, count);
+        cell.append(label, catEl, count);
 
         if (this.shopLinked) {
-          cell.title = `左键卖1个 / 右键卖全部（${getSellPrice(slot.id)}金/个）`;
+          cell.title = `[${cats}] ${def.name} · 左键卖1个 / 右键卖全部（${getSellPrice(slot.id)}金/个）`;
           cell.addEventListener("click", (e) => {
             e.preventDefault();
             this.actions?.onSellOneOf?.(slot.id);
@@ -117,9 +130,18 @@ export class InventoryPanel {
             e.preventDefault();
             this.actions?.onSellAllOf?.(slot.id);
           });
+        } else if (edible) {
+          const heal = getFoodHeal(slot.id);
+          cell.title = `[${cats}] ${def.name} · 左键食用（+${heal} HP）`;
+          cell.addEventListener("click", (e) => {
+            e.preventDefault();
+            this.actions?.onEat?.(slot.id);
+          });
+        } else {
+          cell.title = `[${cats}] ${def.name}`;
         }
       } else {
-        cell.classList.add("empty");
+        cell.className = "inv-slot empty";
         cell.disabled = true;
       }
       void index;
@@ -130,6 +152,13 @@ export class InventoryPanel {
 
 function itemIcon(id: ItemId): string | null {
   if (id === "wood") return "item_wood.png";
-  if (id === "raw_shrimp" || id === "cooked_shrimp") return "item_fish.png";
+  if (id === "apple") return "item_apple.png";
+  if (
+    id === "raw_shrimp" ||
+    id === "cooked_shrimp" ||
+    id === "crayfish"
+  ) {
+    return "item_fish.png";
+  }
   return null;
 }

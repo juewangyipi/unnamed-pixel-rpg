@@ -29,13 +29,23 @@ import { ShopPanel } from "../ui/shopPanel.ts";
 import { WarehousePanel } from "../ui/warehousePanel.ts";
 import { CookPanel } from "../ui/cookPanel.ts";
 import { SkillsPanel } from "../ui/skillsPanel.ts";
+import { FarmPanel } from "../ui/farmPanel.ts";
 import { PauseMenu } from "../ui/pauseMenu.ts";
 import { SettingsStore } from "../systems/settings.ts";
+import { FarmStore } from "../systems/farmStore.ts";
+import {
+  FarmInteraction,
+  findFarmFocus,
+} from "../systems/farmInteraction.ts";
 import { GATHER, type InteractKind } from "../entities/interactable.ts";
+import { farmPhase, type FarmPlot } from "../entities/farmPlot.ts";
+import { getCrop } from "../data/crops.ts";
 import type { Facility } from "../entities/facility.ts";
 import { loadSave, writeSave, type SavePointData } from "../save/saveGame.ts";
-import { getItem } from "../data/items.ts";
+import { getItem, type ItemId } from "../data/items.ts";
+import { getFoodHeal, isEdible } from "../data/foods.ts";
 import { drawShadow, drawSprite, type SpriteName } from "../assets/sprites.ts";
+import { drawFarmPlots } from "../world/drawFarmPlots.ts";
 
 /**
  * 核心循环：移动 · 切屏 · 采集 · 背包 · 商店仓库 · 昼夜 · 暂停菜单 · 存档
@@ -64,7 +74,10 @@ export class Game {
   private readonly warehousePanel: WarehousePanel;
   private readonly cookPanel: CookPanel;
   private readonly skillsPanel: SkillsPanel;
+  private readonly farmPanel: FarmPanel;
   private readonly pauseMenu: PauseMenu;
+  private readonly farms = new FarmStore();
+  private readonly farmIx = new FarmInteraction();
 
   private hp: number = CONFIG.maxHp;
   private savePoint: SavePointData;
@@ -81,6 +94,8 @@ export class Game {
   private toasts: Toast[] = [];
   private focusGatherId: string | null = null;
   private focusFacility: Facility | null = null;
+  private focusFarm: FarmPlot | null = null;
+  private activeFarm: FarmPlot | null = null;
   private activeInteract = null as ReturnType<
     InteractionSystem["update"]
   >["active"];
@@ -97,6 +112,7 @@ export class Game {
     this.warehousePanel = new WarehousePanel(app);
     this.cookPanel = new CookPanel(app);
     this.skillsPanel = new SkillsPanel(app);
+    this.farmPanel = new FarmPanel(app);
     this.pauseMenu = new PauseMenu(app);
     this.pauseMenu.bindSettings(this.settings);
     this.pauseMenu.setActions({
@@ -183,6 +199,7 @@ export class Game {
         const r = this.shop.sellAll(this.inventory, this.wallet, itemId);
         this.afterShopTrade(r, getItem(itemId).name);
       },
+      onEat: (itemId) => this.tryEat(itemId),
     });
 
     this.warehousePanel.setActions({
@@ -257,6 +274,33 @@ export class Game {
       },
       onClose: () => this.cookPanel.setOpen(false),
     });
+
+    this.farmPanel.setActions({
+      onPlant: (cropId) => {
+        const plot = this.farmPanel.targetPlot;
+        if (!plot) return;
+        const nowSec = Date.now() / 1000;
+        const err = this.farmIx.tryPlant(
+          plot,
+          cropId,
+          nowSec,
+          this.inventory,
+        );
+        if (err) {
+          this.pushToast(err);
+          this.farmPanel.refresh(this.inventory, nowSec);
+          return;
+        }
+        const crop = getCrop(cropId);
+        this.pushToast(
+          `已种植${crop.name} · ${crop.growSec}s 后长成${crop.matureLabel}`,
+        );
+        this.farmPanel.setOpen(false);
+        this.bagDirty = true;
+        this.saveNow();
+      },
+      onClose: () => this.farmPanel.setOpen(false),
+    });
   }
 
   private afterShopTrade(
@@ -317,6 +361,9 @@ export class Game {
     if (this.skillsPanel.isOpen) {
       this.skillsPanel.refresh(this.skills);
     }
+    if (this.farmPanel.isOpen) {
+      this.farmPanel.refresh(this.inventory, Date.now() / 1000);
+    }
   }
 
   private tryLoad(): void {
@@ -339,6 +386,7 @@ export class Game {
     this.savePoint = data.savePoint;
     this.time.progress = data.dayProgress;
     this.interactables.loadJSON(data.interactables);
+    this.farms.loadJSON(data.farmPlots);
     this.lastGatherKind = data.lastGatherKind;
     this.interaction.lastGatherKind = data.lastGatherKind;
 
@@ -373,6 +421,7 @@ export class Game {
       dayProgress: this.time.progress,
       interactables: this.interactables.toJSON(),
       lastGatherKind: this.lastGatherKind,
+      farmPlots: this.farms.toJSON(),
     });
   }
 
@@ -393,7 +442,8 @@ export class Game {
       this.warehousePanel.isOpen ||
       this.invPanel.isOpen ||
       this.cookPanel.isOpen ||
-      this.skillsPanel.isOpen
+      this.skillsPanel.isOpen ||
+      this.farmPanel.isOpen
     );
   }
 
@@ -460,17 +510,19 @@ export class Game {
     const nowSec = Date.now() / 1000;
     const gatherList = this.interactables.forChunk(this.world.currentId);
     const facilityList = this.facilities.forChunk(this.world.currentId);
+    const farmList = this.farms.forChunk(this.world.currentId);
 
     this.focusFacility = findFacilityFocus(this.player, facilityList);
 
-    // 设施：点按 E（面板打开时 E 关闭）
+    // 设施 / 农田：点按 E（面板打开时 E 关闭）
     let usedInteractForFacility = false;
     if (this.input.isInteractJustPressed()) {
       if (
         this.shopPanel.isOpen ||
         this.warehousePanel.isOpen ||
         this.cookPanel.isOpen ||
-        this.skillsPanel.isOpen
+        this.skillsPanel.isOpen ||
+        this.farmPanel.isOpen
       ) {
         this.closeAllPanels();
         usedInteractForFacility = true;
@@ -482,7 +534,35 @@ export class Game {
       } else if (this.focusFacility) {
         this.openFacility(this.focusFacility);
         usedInteractForFacility = true;
+      } else {
+        // 空农田：打开种植面板（成熟/生长由 farmIx 处理）
+        const farmFocus = findFarmFocus(this.player, farmList);
+        if (farmFocus && farmPhase(farmFocus, nowSec) === "empty") {
+          this.closeAllPanels();
+          this.farmPanel.openFor(farmFocus, this.inventory, nowSec);
+          usedInteractForFacility = true;
+        }
       }
+    }
+
+    // 农田：生长提示 / 砍苹果树
+    const farmResult = this.farmIx.update({
+      dt,
+      nowSec,
+      player: this.player,
+      interactJustPressed:
+        !usedInteractForFacility && this.input.isInteractJustPressed(),
+      list: farmList,
+      inventory: this.inventory,
+      skills: this.skills,
+      panelOpen: this.farmPanel.isOpen || this.anyGameplayPanelOpen(),
+    });
+    this.focusFarm = farmResult.focus;
+    this.activeFarm = farmResult.active;
+    if (farmResult.consumedPress) usedInteractForFacility = true;
+    if (farmResult.toasts.length) {
+      this.toasts.push(...farmResult.toasts);
+      this.bagDirty = true;
     }
 
     // 篝火燃烧（离开范围 / 没木头会熄灭）
@@ -527,11 +607,13 @@ export class Game {
       this.cookUiAcc = 0;
     }
 
-    // 采集：树/鱼点一下持续采（开面板时不采）
+    // 采集：树/鱼点一下持续采（开面板时不采；农田交互优先）
     const canGather =
       !this.shopPanel.isOpen &&
       !this.warehousePanel.isOpen &&
-      !this.cookPanel.isOpen;
+      !this.cookPanel.isOpen &&
+      !this.farmPanel.isOpen &&
+      !this.activeFarm;
     const result = this.interaction.update({
       dt,
       nowSec,
@@ -622,11 +704,45 @@ export class Game {
     this.shopPanel.setOpen(false);
     this.cookPanel.setOpen(false);
     this.skillsPanel.setOpen(false);
+    this.farmPanel.setOpen(false);
   }
 
   private pushToast(text: string, ttl = 2.4): void {
     if (!this.settings.raw.showToasts) return;
     this.toasts.push({ text, ttl });
+  }
+
+  /** 背包左键：食用食物，回血并消耗 1 个（回血数值见 data/foods.ts） */
+  private tryEat(itemId: ItemId): void {
+    if (!isEdible(itemId)) {
+      this.pushToast("这个不能吃");
+      return;
+    }
+    if (this.inventory.countOf(itemId) <= 0) {
+      this.pushToast("没有这件物品");
+      return;
+    }
+    if (this.hp >= CONFIG.maxHp) {
+      this.pushToast("生命已满，不必食用");
+      return;
+    }
+    const def = getItem(itemId);
+    const heal = getFoodHeal(itemId);
+    if (heal <= 0) {
+      this.pushToast("这个不能吃");
+      return;
+    }
+    const removed = this.inventory.remove(itemId, 1);
+    if (removed <= 0) {
+      this.pushToast("食用失败");
+      return;
+    }
+    const before = this.hp;
+    this.hp = Math.min(CONFIG.maxHp, this.hp + heal);
+    const gained = Math.round(this.hp - before);
+    this.pushToast(`食用${def.name} · +${gained} HP`);
+    this.refreshOpenPanels();
+    this.saveNow();
   }
 
   private render(): void {
@@ -638,6 +754,14 @@ export class Game {
 
     renderChunkBackground(ctx, chunk, canvas.width, canvas.height);
     const nowDraw = performance.now() / 1000;
+    const farmList = this.farms.forChunk(world.currentId);
+    drawFarmPlots(
+      ctx,
+      farmList,
+      nowSec,
+      this.focusFarm?.id ?? null,
+      this.activeFarm,
+    );
     drawFacilities(
       ctx,
       facilityList,
@@ -701,7 +825,8 @@ export class Game {
     if (
       this.shopPanel.isOpen ||
       this.warehousePanel.isOpen ||
-      this.cookPanel.isOpen
+      this.cookPanel.isOpen ||
+      this.farmPanel.isOpen
     ) {
       return null;
     }
@@ -715,6 +840,21 @@ export class Game {
     }
     if (this.focusFacility) {
       return `E · ${this.focusFacility.label}`;
+    }
+    if (this.activeFarm) {
+      return "砍苹果树中 · E 停止";
+    }
+    if (this.focusFarm) {
+      const nowSec = Date.now() / 1000;
+      const phase = farmPhase(this.focusFarm, nowSec);
+      if (phase === "empty") return "E · 种植";
+      if (phase === "growing") {
+        const left = Math.ceil(
+          Math.max(0, this.focusFarm.readyWallSec - nowSec),
+        );
+        return `生长中 · ${left}s · E 查看`;
+      }
+      return "E · 砍苹果树";
     }
     if (this.activeInteract) {
       const profile = GATHER[this.activeInteract.kind];

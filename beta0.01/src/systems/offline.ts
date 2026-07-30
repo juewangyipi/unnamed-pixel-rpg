@@ -2,9 +2,10 @@ import { CONFIG } from "../core/config.ts";
 import { GATHER, type InteractKind } from "../entities/interactable.ts";
 import { getItem } from "../data/items.ts";
 import { SKILLS } from "../data/skills.ts";
+import type { ItemId } from "../data/items.ts";
 import type { Inventory } from "./inventory.ts";
 import type { Skills } from "./skills.ts";
-import type { Toast } from "./interaction.ts";
+import { resolveGatherDrop, type Toast } from "./interaction.ts";
 
 /**
  * 离线补进度（简版）：
@@ -42,19 +43,34 @@ export function applyOfflineProgress(args: {
     return toasts;
   }
 
-  let gained = 0;
+  const gained = new Map<ItemId, number>();
+  let any = false;
   for (let i = 0; i < times; i++) {
-    if (!inventory.canFit(profile.itemId, profile.amount)) break;
-    const err = inventory.add(profile.itemId, profile.amount);
+    const drop = resolveGatherDrop(profile);
+    if (!inventory.canFit(drop.itemId, drop.amount)) break;
+    const err = inventory.add(drop.itemId, drop.amount);
     if (err) break;
-    gained += profile.amount;
+    gained.set(drop.itemId, (gained.get(drop.itemId) ?? 0) + drop.amount);
+    any = true;
     skills.addXp(profile.skillId, profile.xp);
+
+    for (const bonus of profile.bonusDrops ?? []) {
+      if (Math.random() >= bonus.chance) continue;
+      if (!inventory.canFit(bonus.itemId, bonus.amount)) continue;
+      if (inventory.add(bonus.itemId, bonus.amount)) continue;
+      gained.set(
+        bonus.itemId,
+        (gained.get(bonus.itemId) ?? 0) + bonus.amount,
+      );
+    }
   }
 
-  const item = getItem(profile.itemId);
-  if (gained > 0) {
+  if (any) {
+    const parts = [...gained.entries()]
+      .map(([id, n]) => `${n} ${getItem(id).name}`)
+      .join("、");
     toasts.push({
-      text: `离线 ${formatDur(elapsed)}：补 ${gained} ${item.name}（${SKILLS[profile.skillId].name}）`,
+      text: `离线 ${formatDur(elapsed)}：补 ${parts}（${SKILLS[profile.skillId].name}）`,
       ttl: 4,
     });
   } else {

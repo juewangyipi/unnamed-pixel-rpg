@@ -44,13 +44,14 @@ export class Inventory {
 
   add(id: ItemId, amount: number): string | null {
     if (amount <= 0) return null;
-    const def = getItem(id);
+    const max = stackCap(id);
     let left = amount;
 
+    // 优先堆入已有同物品格（无限堆叠时会全部放进第一格）
     for (const s of this.slots) {
       if (!s || s.id !== id) continue;
-      const room = def.stackMax - s.count;
-      if (room <= 0) continue;
+      const room = max - s.count;
+      if (!(room > 0)) continue;
       const put = Math.min(room, left);
       s.count += put;
       left -= put;
@@ -59,7 +60,7 @@ export class Inventory {
 
     for (let i = 0; i < this.slots.length; i++) {
       if (this.slots[i]) continue;
-      const put = Math.min(def.stackMax, left);
+      const put = Math.min(max, left);
       this.slots[i] = { id, count: put };
       left -= put;
       if (left <= 0) return null;
@@ -69,22 +70,37 @@ export class Inventory {
   }
 
   canFit(id: ItemId, amount: number): boolean {
-    const def = getItem(id);
+    const max = stackCap(id);
     let left = amount;
 
     for (const s of this.slots) {
       if (s?.id === id) {
-        left -= Math.max(0, def.stackMax - s.count);
+        const room = max - s.count;
+        if (room > 0) left -= room;
         if (left <= 0) return true;
       }
     }
     for (const s of this.slots) {
       if (s === null) {
-        left -= def.stackMax;
+        left -= max;
         if (left <= 0) return true;
       }
     }
     return left <= 0;
+  }
+
+  /** 把同 id 分散格子合并到一格（读档兼容旧 99 上限） */
+  consolidateStacks(): void {
+    const totals = new Map<ItemId, number>();
+    for (let i = 0; i < this.slots.length; i++) {
+      const s = this.slots[i];
+      if (!s) continue;
+      totals.set(s.id, (totals.get(s.id) ?? 0) + s.count);
+      this.slots[i] = null;
+    }
+    for (const [id, count] of totals) {
+      this.add(id, count);
+    }
   }
 
   /** 移除指定数量，返回实际移除数 */
@@ -155,6 +171,14 @@ export class Inventory {
     }
     // 兼容旧档：slots 比 capacity 长时扩展
     while (inv.slots.length < data.capacity) inv.slots.push(null);
+    // 旧档可能按 99 拆成多格，读入后合并
+    inv.consolidateStacks();
     return inv;
   }
+}
+
+function stackCap(id: ItemId): number {
+  const max = getItem(id).stackMax;
+  // 非正数也视作无限，避免配置失误
+  return max > 0 ? max : Number.POSITIVE_INFINITY;
 }

@@ -1,6 +1,10 @@
 import type { ChunkId } from "../world/chunk.ts";
 import type { ItemId } from "../data/items.ts";
 import type { SkillId } from "../data/skills.ts";
+import {
+  FISHING_LOOT,
+  type FishingLootEntry,
+} from "../data/fishing.ts";
 
 export type InteractKind =
   | "tree"
@@ -27,10 +31,25 @@ export type Interactable = {
   hits: number;
 };
 
+/** 主产物之外的额外掉落（每次成功采集独立判定） */
+export type BonusDrop = {
+  itemId: ItemId;
+  amount: number;
+  /** 0～1，例如 0.05 = 5% */
+  chance: number;
+};
+
+/** 互斥掉落表项（概率之和应为 1） */
+export type LootEntry = FishingLootEntry;
+
 export type GatherProfile = {
   skillId: SkillId;
+  /**
+   * 固定主产物（无 lootTable 时使用）。
+   * 有 lootTable 时作兜底/离线展示用。
+   */
   itemId: ItemId;
-  /** 每次完成获得数量 */
+  /** 每次完成获得数量（无 lootTable 时） */
   amount: number;
   /** 技能经验 */
   xp: number;
@@ -45,6 +64,13 @@ export type GatherProfile = {
   respawn: number;
   mode: GatherMode;
   label: string;
+  /** 可选：额外掉落表（独立掷骰，可多项） */
+  bonusDrops?: BonusDrop[];
+  /**
+   * 可选：互斥主掉落表（如钓鱼）。
+   * 有则每次成功采集按 chance 抽一项，替代固定 itemId。
+   */
+  lootTable?: LootEntry[];
 };
 
 export const GATHER: Record<InteractKind, GatherProfile> = {
@@ -58,6 +84,7 @@ export const GATHER: Record<InteractKind, GatherProfile> = {
     respawn: 10,
     mode: "auto",
     label: "砍树",
+    bonusDrops: [{ itemId: "apple", amount: 1, chance: 0.05 }],
   },
   fish_spot: {
     skillId: "fishing",
@@ -69,6 +96,7 @@ export const GATHER: Record<InteractKind, GatherProfile> = {
     respawn: 0,
     mode: "auto",
     label: "钓鱼",
+    lootTable: FISHING_LOOT,
   },
   /** 符文精华：2s 一次，10 次后冷却 10s */
   rune_node: {

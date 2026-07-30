@@ -427,6 +427,20 @@ body {
   white-space: nowrap;
 }
 
+/* 物品分类标签（可多类，如「农作物 · 食物」） */
+#inventory-panel .inv-cat,
+.side-panel .inv-cat {
+  font-size: 6px;
+  color: var(--px-text-dim);
+  text-align: center;
+  line-height: 1.1;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.9;
+}
+
 #inventory-panel .inv-count,
 .side-panel .inv-count {
   position: absolute;

@@ -28,8 +28,11 @@ export type ItemPrice = {
 export const ITEM_PRICES: Record<ItemId, ItemPrice> = {
   //          卖价  买价（暂未开放）
   wood: { sell: 2, buy: 5 },
+  apple: { sell: 10, buy: 12 },
   raw_shrimp: { sell: 3, buy: 12 },
+  crayfish: { sell: 18, buy: 45 },
   cooked_shrimp: { sell: 6, buy: 20 },
+  treasure_chest: { sell: 100, buy: 0 },
   coal: { sell: 6, buy: 20 },
   rune_essence: { sell: 4, buy: 12 },
   copper_ore: { sell: 5, buy: 15 },

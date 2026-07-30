@@ -5,6 +5,7 @@ import type { InventorySnapshot } from "../systems/inventory.ts";
 import type { SkillsSnapshot } from "../systems/skills.ts";
 import type { ShopState } from "../systems/shop.ts";
 import type { InteractableSnapshot } from "../systems/interactableStore.ts";
+import type { FarmPlotSnapshot } from "../systems/farmStore.ts";
 import type { InteractKind } from "../entities/interactable.ts";
 
 export type SavePointData = {
@@ -30,6 +31,8 @@ export type SaveData = {
   dayProgress: number;
   interactables: InteractableSnapshot[];
   lastGatherKind: InteractKind | null;
+  /** 旧档可缺省 */
+  farmPlots?: FarmPlotSnapshot[];
 };
 
 export function loadSave(): SaveData | null {

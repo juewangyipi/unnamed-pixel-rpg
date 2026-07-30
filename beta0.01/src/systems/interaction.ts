@@ -8,7 +8,8 @@ import {
 } from "../entities/interactable.ts";
 import type { Inventory } from "./inventory.ts";
 import type { Skills } from "./skills.ts";
-import { getItem } from "../data/items.ts";
+import { getItem, type ItemId } from "../data/items.ts";
+import { rollFishingLoot } from "../data/fishing.ts";
 import { SKILLS, skillDuration } from "../data/skills.ts";
 import { CONFIG } from "../core/config.ts";
 
@@ -129,7 +130,7 @@ export class InteractionSystem {
           (profile.mode === "hold" && interactHeld);
 
         if (canAdvance) {
-          if (!inventory.canFit(profile.itemId, profile.amount)) {
+          if (!canFitGatherDrop(profile, inventory)) {
             if (this.fullBagCooldown <= 0) {
               toasts.push({ text: "背包已满", ttl: TOAST_TTL });
               this.fullBagCooldown = 1.2;
@@ -145,14 +146,28 @@ export class InteractionSystem {
               active.progress = 0;
               active.hits += 1;
 
-              const err = inventory.add(profile.itemId, profile.amount);
+              const drop = resolveGatherDrop(profile);
+              const err = inventory.add(drop.itemId, drop.amount);
               if (err) {
                 toasts.push({ text: err, ttl: TOAST_TTL });
               } else {
-                const item = getItem(profile.itemId);
+                const item = getItem(drop.itemId);
+                const rare =
+                  drop.itemId === "treasure_chest"
+                    ? "★ "
+                    : drop.itemId === "crayfish"
+                      ? "！ "
+                      : "";
                 toasts.push({
-                  text: `+${profile.amount} ${item.name}`,
-                  ttl: TOAST_TTL,
+                  text: `${rare}+${drop.amount} ${item.name}`,
+                  ttl: TOAST_TTL + (rare ? 0.8 : 0),
+                });
+                applyBonusDrops(profile, inventory, toasts, () => {
+                  if (this.fullBagCooldown <= 0) {
+                    this.fullBagCooldown = 1.2;
+                    return true;
+                  }
+                  return false;
                 });
                 const ups = skills.addXp(profile.skillId, profile.xp);
                 for (const u of ups) {
@@ -193,6 +208,87 @@ export class InteractionSystem {
       focus,
       lastGatherKind: gathered ?? this.lastGatherKind,
     };
+  }
+}
+
+/** 有 lootTable 时互斥抽奖，否则固定主产物 */
+export function resolveGatherDrop(profile: (typeof GATHER)[InteractKind]): {
+  itemId: ItemId;
+  amount: number;
+} {
+  if (profile.lootTable?.length) {
+    // 钓鱼表走专用掷骰（便于以后换算法）；其它表共用累加逻辑
+    if (profile.lootTable === GATHER.fish_spot.lootTable) {
+      return (
+        rollFishingLoot(profile.lootTable) ?? {
+          itemId: profile.itemId,
+          amount: profile.amount,
+        }
+      );
+    }
+    return rollLootTable(profile.lootTable) ?? {
+      itemId: profile.itemId,
+      amount: profile.amount,
+    };
+  }
+  return { itemId: profile.itemId, amount: profile.amount };
+}
+
+function rollLootTable(
+  table: readonly { itemId: ItemId; amount: number; chance: number }[],
+): { itemId: ItemId; amount: number } | null {
+  if (!table.length) return null;
+  const r = Math.random();
+  let acc = 0;
+  for (const entry of table) {
+    acc += entry.chance;
+    if (r < acc) return { itemId: entry.itemId, amount: entry.amount };
+  }
+  const last = table[table.length - 1]!;
+  return { itemId: last.itemId, amount: last.amount };
+}
+
+/** lootTable：须装得下表内每一项，避免掷中无法入包 */
+function canFitGatherDrop(
+  profile: (typeof GATHER)[InteractKind],
+  inventory: Inventory,
+): boolean {
+  if (profile.lootTable?.length) {
+    return profile.lootTable.every((e) =>
+      inventory.canFit(e.itemId, e.amount),
+    );
+  }
+  return inventory.canFit(profile.itemId, profile.amount);
+}
+
+/** 按配置表独立掷骰额外掉落；背包满时最多提示一次。 */
+function applyBonusDrops(
+  profile: (typeof GATHER)[InteractKind],
+  inventory: Inventory,
+  toasts: Toast[],
+  canToastFull: () => boolean,
+): void {
+  const bonuses = profile.bonusDrops;
+  if (!bonuses?.length) return;
+
+  for (const bonus of bonuses) {
+    if (Math.random() >= bonus.chance) continue;
+    if (!inventory.canFit(bonus.itemId, bonus.amount)) {
+      if (canToastFull()) {
+        toasts.push({ text: "背包已满", ttl: TOAST_TTL });
+      }
+      continue;
+    }
+    const err = inventory.add(bonus.itemId, bonus.amount);
+    if (err) {
+      if (canToastFull()) toasts.push({ text: err, ttl: TOAST_TTL });
+      continue;
+    }
+    const item = getItem(bonus.itemId);
+    toasts.push({
+      text: `+${bonus.amount} ${item.name}`,
+      ttl: TOAST_TTL,
+    });
   }
 }
 

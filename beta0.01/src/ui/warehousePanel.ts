@@ -1,5 +1,9 @@
 import type { Inventory } from "../systems/inventory.ts";
-import { getItem, type ItemId } from "../data/items.ts";
+import {
+  formatItemCategories,
+  getItem,
+  type ItemId,
+} from "../data/items.ts";
 import { getSellPrice } from "../data/prices.ts";
 
 export type WarehouseActions = {
@@ -178,6 +182,7 @@ function fillGrid(
       count.textContent = String(slot.count);
       cell.append(label, count);
 
+      const cats = formatItemCategories(slot.id);
       if (opts.onRightSell) {
         cell.addEventListener("contextmenu", (e) => {
           e.preventDefault();
@@ -185,14 +190,16 @@ function fillGrid(
         });
       }
       if (opts.onLeftSellOne) {
-        cell.title = `左键卖1个 / 右键卖全部（${getSellPrice(slot.id)}金/个）`;
+        cell.title = `[${cats}] ${def.name} · 左键卖1个 / 右键卖全部（${getSellPrice(slot.id)}金/个）`;
         cell.addEventListener("click", (e) => {
           e.preventDefault();
           opts.onLeftSellOne?.(slot.id);
         });
       } else if (opts.onLeft) {
+        cell.title = `[${cats}] ${def.name}`;
         cell.addEventListener("click", () => opts.onLeft?.(index));
       } else {
+        cell.title = `[${cats}] ${def.name}`;
         cell.addEventListener("click", (e) => e.preventDefault());
       }
     } else {
@@ -205,7 +212,14 @@ function fillGrid(
 
 function itemIcon(id: ItemId): string | null {
   if (id === "wood") return "item_wood.png";
-  if (id === "raw_shrimp" || id === "cooked_shrimp") return "item_fish.png";
+  if (id === "apple") return "item_apple.png";
+  if (
+    id === "raw_shrimp" ||
+    id === "cooked_shrimp" ||
+    id === "crayfish"
+  ) {
+    return "item_fish.png";
+  }
   return null;
 }
 
