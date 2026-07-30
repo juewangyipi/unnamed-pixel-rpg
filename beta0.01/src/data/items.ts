@@ -2,14 +2,16 @@
  * 物品定义（名称、分类、堆叠、颜色等）。
  * ★ 价格请到 prices.ts 修改。
  * ★ 食物回血请到 foods.ts 修改。
+ * ★ 药水效果请到 potions.ts 修改。
  *
- * 分类约定（可多选；加新物品时选好类别）：
- *   wood     木头    — 原木等砍树产物
- *   mineral  矿物    — 矿石、煤炭、精华等
- *   crop     农作物  — 田里种的、树上摘的
- *   seafood  海鲜    — 生鲜海产（一般需烹饪）
- *   food     食物    — 可直接食用（回血见 foods.ts）
- *   misc     杂物    — 宝箱等特殊物品
+ * 分类约定（可多选）：
+ *   wood      木头    — 原木等砍树产物
+ *   mineral   矿物    — 矿石、煤炭、精华等
+ *   crop      农作物  — 田里种的、树上摘的
+ *   material  原材料  — 生鲜海产、羽毛、草药等加工原料
+ *   food      食物    — 可直接食用（回血见 foods.ts）
+ *   potion    药水    — 可饮用增益（效果见 potions.ts）
+ *   chest     宝箱    — 鸟巢、钓鱼宝箱等
  */
 import {
   getBuyPrice,
@@ -23,9 +25,10 @@ export type ItemCategoryId =
   | "wood"
   | "mineral"
   | "crop"
-  | "seafood"
+  | "material"
   | "food"
-  | "misc";
+  | "potion"
+  | "chest";
 
 export type ItemCategoryDef = {
   id: ItemCategoryId;
@@ -40,9 +43,10 @@ export const ITEM_CATEGORIES: Record<ItemCategoryId, ItemCategoryDef> = {
   wood: { id: "wood", name: "木头", order: 10 },
   mineral: { id: "mineral", name: "矿物", order: 20 },
   crop: { id: "crop", name: "农作物", order: 30 },
-  seafood: { id: "seafood", name: "海鲜", order: 40 },
+  material: { id: "material", name: "原材料", order: 40 },
   food: { id: "food", name: "食物", order: 50 },
-  misc: { id: "misc", name: "杂物", order: 60 },
+  potion: { id: "potion", name: "药水", order: 60 },
+  chest: { id: "chest", name: "宝箱", order: 70 },
 };
 
 export const ITEM_CATEGORY_LIST: ItemCategoryDef[] = Object.values(
@@ -57,6 +61,13 @@ export type ItemId =
   | "raw_shrimp"
   | "crayfish"
   | "cooked_shrimp"
+  | "feather"
+  | "bone"
+  | "raw_chicken"
+  | "cooked_chicken"
+  | "galum_grass"
+  | "bird_nest_potion"
+  | "bird_nest"
   | "treasure_chest"
   | "coal"
   | "rune_essence"
@@ -89,7 +100,7 @@ const ITEM_BASE: Record<ItemId, ItemDef> = {
     color: "#a67c52",
   },
 
-  // —— 农作物 + 食物（回血见 foods.ts）——
+  // —— 农作物 + 食物 ——
   apple: {
     id: "apple",
     name: "苹果",
@@ -98,23 +109,51 @@ const ITEM_BASE: Record<ItemId, ItemDef> = {
     color: "#e05050",
   },
 
-  // —— 海鲜（生，不可直接吃）——
+  // —— 原材料 ——
   raw_shrimp: {
     id: "raw_shrimp",
     name: "生虾",
-    categories: ["seafood"],
+    categories: ["material"],
     stackMax: STACK_UNLIMITED,
     color: "#e07a5f",
   },
   crayfish: {
     id: "crayfish",
     name: "小龙虾",
-    categories: ["seafood"],
+    categories: ["material"],
     stackMax: STACK_UNLIMITED,
     color: "#c43c2c",
   },
+  feather: {
+    id: "feather",
+    name: "羽毛",
+    categories: ["material"],
+    stackMax: STACK_UNLIMITED,
+    color: "#e8e0d0",
+  },
+  bone: {
+    id: "bone",
+    name: "骨头",
+    categories: ["material"],
+    stackMax: STACK_UNLIMITED,
+    color: "#d8d0c0",
+  },
+  raw_chicken: {
+    id: "raw_chicken",
+    name: "生鸡肉",
+    categories: ["material"],
+    stackMax: STACK_UNLIMITED,
+    color: "#e8a090",
+  },
+  galum_grass: {
+    id: "galum_grass",
+    name: "盖鲁姆草",
+    categories: ["material"],
+    stackMax: STACK_UNLIMITED,
+    color: "#5a9a48",
+  },
 
-  // —— 食物（回血见 foods.ts）——
+  // —— 食物 ——
   cooked_shrimp: {
     id: "cooked_shrimp",
     name: "熟虾",
@@ -122,12 +161,35 @@ const ITEM_BASE: Record<ItemId, ItemDef> = {
     stackMax: STACK_UNLIMITED,
     color: "#e8a050",
   },
+  cooked_chicken: {
+    id: "cooked_chicken",
+    name: "熟鸡肉",
+    categories: ["food"],
+    stackMax: STACK_UNLIMITED,
+    color: "#d4a060",
+  },
 
-  // —— 杂物 ——
+  // —— 药水 ——
+  bird_nest_potion: {
+    id: "bird_nest_potion",
+    name: "鸟巢药水",
+    categories: ["potion"],
+    stackMax: STACK_UNLIMITED,
+    color: "#c8a060",
+  },
+
+  // —— 宝箱 ——
+  bird_nest: {
+    id: "bird_nest",
+    name: "鸟巢",
+    categories: ["chest"],
+    stackMax: STACK_UNLIMITED,
+    color: "#8b6914",
+  },
   treasure_chest: {
     id: "treasure_chest",
     name: "宝箱",
-    categories: ["misc"],
+    categories: ["chest"],
     stackMax: STACK_UNLIMITED,
     color: "#d4a017",
   },
@@ -163,9 +225,12 @@ export const ITEMS: Record<ItemId, ItemDef> = ITEM_BASE;
 export const ITEM_IDS: ItemId[] = Object.keys(ITEM_BASE) as ItemId[];
 
 /**
- * 商店货架商品顺序（购买功能后置，当前 UI 未使用）。
- * @internal
+ * 商店可购买货架（参考：盖鲁姆草 50 金/棵）。
+ * 以后加商品只往这个数组塞 id，并在 prices.ts 写好 buy。
  */
+export const SHOP_BUY_ITEM_IDS: ItemId[] = ["galum_grass"];
+
+/** 全部物品按分类排序（内部/调试） */
 export const SHOP_ITEM_IDS: ItemId[] = sortItemIdsByCategory(ITEM_IDS);
 
 export function getItem(id: ItemId): ItemDef {
@@ -175,7 +240,7 @@ export function getItem(id: ItemId): ItemDef {
 /** 主分类（categories[0]，用于排序） */
 export function getPrimaryCategory(id: ItemId): ItemCategoryDef {
   const cats = ITEMS[id].categories;
-  return ITEM_CATEGORIES[cats[0] ?? "food"];
+  return ITEM_CATEGORIES[cats[0] ?? "material"];
 }
 
 /** 全部所属分类定义 */

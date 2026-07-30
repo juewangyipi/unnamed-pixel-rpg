@@ -5,6 +5,7 @@ import {
   type ItemId,
 } from "../data/items.ts";
 import { getFoodHeal, isEdible } from "../data/foods.ts";
+import { getPotionEffect, isDrinkable } from "../data/potions.ts";
 import { getSellPrice } from "../data/prices.ts";
 
 export type InventoryPanelActions = {
@@ -14,6 +15,8 @@ export type InventoryPanelActions = {
   onSellAllOf?: (itemId: ItemId) => void;
   /** 普通模式：左键食用食物 */
   onEat?: (itemId: ItemId) => void;
+  /** 普通模式：左键饮用药水 */
+  onDrink?: (itemId: ItemId) => void;
 };
 
 /**
@@ -47,7 +50,7 @@ export class InventoryPanel {
 
     this.hint = document.createElement("div");
     this.hint.className = "inv-hint";
-    this.hint.textContent = "食物左键食用 · B / I 关闭";
+    this.hint.textContent = "食物/药水左键使用 · B / I 关闭";
 
     this.root.append(title, this.meta, this.grid, this.hint);
     host.appendChild(this.root);
@@ -67,7 +70,7 @@ export class InventoryPanel {
     this.root.classList.toggle("shop-linked", linked);
     this.hint.textContent = linked
       ? "左键卖1个 · 右键卖全部"
-      : "食物左键食用 · B / I 关闭";
+      : "食物/药水左键使用 · B / I 关闭";
   }
 
   toggle(): void {
@@ -90,8 +93,10 @@ export class InventoryPanel {
         const def = getItem(slot.id);
         const cats = formatItemCategories(slot.id);
         const edible = !this.shopLinked && isEdible(slot.id);
+        const drinkable = !this.shopLinked && isDrinkable(slot.id);
+        const usable = edible || drinkable;
         cell.className =
-          "inv-slot" + (this.shopLinked || edible ? " clickable" : "");
+          "inv-slot" + (this.shopLinked || usable ? " clickable" : "");
         cell.style.borderColor = def.color;
         const iconFile = itemIcon(slot.id);
         if (iconFile) {
@@ -136,6 +141,15 @@ export class InventoryPanel {
           cell.addEventListener("click", (e) => {
             e.preventDefault();
             this.actions?.onEat?.(slot.id);
+          });
+        } else if (drinkable) {
+          const effect = getPotionEffect(slot.id);
+          const desc = effect?.description ?? "增益";
+          const charges = effect?.charges ?? 0;
+          cell.title = `[${cats}] ${def.name} · 左键饮用（${desc} · ${charges} 次）`;
+          cell.addEventListener("click", (e) => {
+            e.preventDefault();
+            this.actions?.onDrink?.(slot.id);
           });
         } else {
           cell.title = `[${cats}] ${def.name}`;

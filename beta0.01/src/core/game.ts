@@ -18,6 +18,8 @@ import {
   isNearCampfire,
 } from "../systems/campfire.ts";
 import { CookingSystem } from "../systems/cooking.ts";
+import { AlchemySystem } from "../systems/alchemy.ts";
+import { BuffSystem } from "../systems/buffs.ts";
 import { Wallet } from "../systems/wallet.ts";
 import { Shop } from "../systems/shop.ts";
 import { TimeOfDay } from "../systems/timeOfDay.ts";
@@ -28,11 +30,14 @@ import { InventoryPanel } from "../ui/inventoryPanel.ts";
 import { ShopPanel } from "../ui/shopPanel.ts";
 import { WarehousePanel } from "../ui/warehousePanel.ts";
 import { CookPanel } from "../ui/cookPanel.ts";
+import { AlchemyPanel } from "../ui/alchemyPanel.ts";
+import { CombatPanel } from "../ui/combatPanel.ts";
 import { SkillsPanel } from "../ui/skillsPanel.ts";
 import { FarmPanel } from "../ui/farmPanel.ts";
 import { PauseMenu } from "../ui/pauseMenu.ts";
 import { SettingsStore } from "../systems/settings.ts";
 import { FarmStore } from "../systems/farmStore.ts";
+import { CoopCombatSystem } from "../systems/coopCombat.ts";
 import {
   FarmInteraction,
   findFarmFocus,
@@ -44,8 +49,10 @@ import type { Facility } from "../entities/facility.ts";
 import { loadSave, writeSave, type SavePointData } from "../save/saveGame.ts";
 import { getItem, type ItemId } from "../data/items.ts";
 import { getFoodHeal, isEdible } from "../data/foods.ts";
+import { getPotionEffect, isDrinkable } from "../data/potions.ts";
 import { drawShadow, drawSprite, type SpriteName } from "../assets/sprites.ts";
 import { drawFarmPlots } from "../world/drawFarmPlots.ts";
+import { drawChickens } from "../world/drawChickens.ts";
 
 /**
  * 核心循环：移动 · 切屏 · 采集 · 背包 · 商店仓库 · 昼夜 · 暂停菜单 · 存档
@@ -69,21 +76,27 @@ export class Game {
   private readonly facilities = new FacilityStore();
   private readonly campfire = new CampfireSystem();
   private readonly cooking = new CookingSystem();
+  private readonly alchemy = new AlchemySystem();
+  private readonly buffs = new BuffSystem();
   private readonly invPanel: InventoryPanel;
   private readonly shopPanel: ShopPanel;
   private readonly warehousePanel: WarehousePanel;
   private readonly cookPanel: CookPanel;
+  private readonly alchemyPanel: AlchemyPanel;
+  private readonly combatPanel: CombatPanel;
   private readonly skillsPanel: SkillsPanel;
   private readonly farmPanel: FarmPanel;
   private readonly pauseMenu: PauseMenu;
   private readonly farms = new FarmStore();
   private readonly farmIx = new FarmInteraction();
+  private readonly coopCombat = new CoopCombatSystem();
 
   private hp: number = CONFIG.maxHp;
   private savePoint: SavePointData;
   private lastGatherKind: InteractKind | null = null;
   private bagDirty = false;
   private cookUiAcc = 0;
+  private alchemyUiAcc = 0;
   private paused = false;
 
   private lastTs = 0;
@@ -111,6 +124,8 @@ export class Game {
     this.shopPanel = new ShopPanel(app);
     this.warehousePanel = new WarehousePanel(app);
     this.cookPanel = new CookPanel(app);
+    this.alchemyPanel = new AlchemyPanel(app);
+    this.combatPanel = new CombatPanel(app);
     this.skillsPanel = new SkillsPanel(app);
     this.farmPanel = new FarmPanel(app);
     this.pauseMenu = new PauseMenu(app);
@@ -187,6 +202,15 @@ export class Game {
           this.saveNow();
         }
       },
+      onBuyItem: (itemId) => {
+        const err = this.shop.buyOne(this.inventory, this.wallet, itemId);
+        if (err) this.pushToast(err);
+        else {
+          this.pushToast(`购入 ${getItem(itemId).name} x1`);
+          this.refreshOpenPanels();
+          this.saveNow();
+        }
+      },
       onClose: () => this.closeShop(),
     });
 
@@ -200,6 +224,7 @@ export class Game {
         this.afterShopTrade(r, getItem(itemId).name);
       },
       onEat: (itemId) => this.tryEat(itemId),
+      onDrink: (itemId) => this.tryDrink(itemId),
     });
 
     this.warehousePanel.setActions({
@@ -301,6 +326,46 @@ export class Game {
       },
       onClose: () => this.farmPanel.setOpen(false),
     });
+
+    this.alchemyPanel.setActions({
+      onStart: (recipeId, amount) => {
+        const err = this.alchemy.start(recipeId, amount, this.inventory);
+        if (err) this.pushToast(err);
+        else {
+          this.pushToast("开始制药…");
+          this.alchemyPanel.refresh(
+            this.alchemy,
+            this.inventory,
+            this.skills,
+          );
+          this.saveNow();
+        }
+      },
+      onStop: () => {
+        const toasts: Toast[] = [];
+        this.alchemy.stop(toasts, "已停止制药");
+        this.toasts.push(...toasts);
+        this.alchemyPanel.refresh(this.alchemy, this.inventory, this.skills);
+        this.bagDirty = true;
+      },
+      onClose: () => this.alchemyPanel.setOpen(false),
+    });
+
+    this.combatPanel.setActions({
+      onConfirm: () => {
+        if (this.combatPanel.currentMode === "start") {
+          const bounds = this.world.boundsPx();
+          this.coopCombat.start({ arenaW: bounds.w, arenaH: bounds.h });
+          this.combatPanel.setOpen(false);
+          this.pushToast("战斗开始 · 自动追鸡 · E 可停止");
+        } else {
+          this.coopCombat.stop();
+          this.combatPanel.setOpen(false);
+          this.pushToast("已停止战斗");
+        }
+      },
+      onCancel: () => this.combatPanel.setOpen(false),
+    });
   }
 
   private afterShopTrade(
@@ -358,6 +423,9 @@ export class Game {
     if (this.cookPanel.isOpen) {
       this.cookPanel.refresh(this.cooking, this.inventory, this.skills);
     }
+    if (this.alchemyPanel.isOpen) {
+      this.alchemyPanel.refresh(this.alchemy, this.inventory, this.skills);
+    }
     if (this.skillsPanel.isOpen) {
       this.skillsPanel.refresh(this.skills);
     }
@@ -387,6 +455,7 @@ export class Game {
     this.time.progress = data.dayProgress;
     this.interactables.loadJSON(data.interactables);
     this.farms.loadJSON(data.farmPlots);
+    this.buffs.loadJSON(data.buffs);
     this.lastGatherKind = data.lastGatherKind;
     this.interaction.lastGatherKind = data.lastGatherKind;
 
@@ -422,6 +491,7 @@ export class Game {
       interactables: this.interactables.toJSON(),
       lastGatherKind: this.lastGatherKind,
       farmPlots: this.farms.toJSON(),
+      buffs: this.buffs.toJSON(),
     });
   }
 
@@ -442,6 +512,8 @@ export class Game {
       this.warehousePanel.isOpen ||
       this.invPanel.isOpen ||
       this.cookPanel.isOpen ||
+      this.alchemyPanel.isOpen ||
+      this.combatPanel.isOpen ||
       this.skillsPanel.isOpen ||
       this.farmPanel.isOpen
     );
@@ -497,11 +569,28 @@ export class Game {
 
     this.time.update(dt);
 
-    const axis = this.input.getMoveAxis();
-    this.player.update(dt, axis);
+    // 战斗中：自动追鸡，禁用手动移动与切屏
+    if (this.coopCombat.fighting) {
+      const bounds = this.world.boundsPx();
+      const fight = this.coopCombat.update({
+        dt,
+        player: this.player,
+        inventory: this.inventory,
+        skills: this.skills,
+        arenaW: bounds.w,
+        arenaH: bounds.h,
+      });
+      if (fight.toasts.length) {
+        this.toasts.push(...fight.toasts);
+        this.bagDirty = true;
+      }
+    } else {
+      const axis = this.input.getMoveAxis();
+      this.player.update(dt, axis);
 
-    if (this.world.resolvePlayerBounds(this.player)) {
-      this.transitionFlash = 1.6;
+      if (this.world.resolvePlayerBounds(this.player)) {
+        this.transitionFlash = 1.6;
+      }
     }
     if (this.transitionFlash > 0) {
       this.transitionFlash = Math.max(0, this.transitionFlash - dt);
@@ -521,10 +610,17 @@ export class Game {
         this.shopPanel.isOpen ||
         this.warehousePanel.isOpen ||
         this.cookPanel.isOpen ||
+        this.alchemyPanel.isOpen ||
+        this.combatPanel.isOpen ||
         this.skillsPanel.isOpen ||
         this.farmPanel.isOpen
       ) {
         this.closeAllPanels();
+        usedInteractForFacility = true;
+      } else if (this.coopCombat.fighting) {
+        // 战斗中 E：打开停止确认
+        this.closeAllPanels();
+        this.combatPanel.openStop();
         usedInteractForFacility = true;
       } else if (this.focusFacility?.kind === "campfire") {
         const lightToasts: Toast[] = [];
@@ -607,12 +703,43 @@ export class Game {
       this.cookUiAcc = 0;
     }
 
-    // 采集：树/鱼点一下持续采（开面板时不采；农田交互优先）
+    // 制药进行中
+    const alchemyResult = this.alchemy.update({
+      dt,
+      inventory: this.inventory,
+      skills: this.skills,
+    });
+    if (alchemyResult.toasts.length) {
+      this.toasts.push(...alchemyResult.toasts);
+      this.bagDirty = true;
+    }
+    if (this.alchemyPanel.isOpen) {
+      this.alchemyUiAcc += dt;
+      if (
+        alchemyResult.finishedBatch ||
+        (this.alchemy.active && this.alchemyUiAcc >= 0.2)
+      ) {
+        this.alchemyUiAcc = 0;
+        this.alchemyPanel.refresh(this.alchemy, this.inventory, this.skills);
+      }
+    } else {
+      this.alchemyUiAcc = 0;
+    }
+
+    // 药水增益倒计时
+    const buffToasts: Toast[] = [];
+    this.buffs.update(dt, buffToasts);
+    if (buffToasts.length) this.toasts.push(...buffToasts);
+
+    // 采集：树/鱼点一下持续采（开面板时不采；农田交互优先；战斗中不采）
     const canGather =
       !this.shopPanel.isOpen &&
       !this.warehousePanel.isOpen &&
       !this.cookPanel.isOpen &&
+      !this.alchemyPanel.isOpen &&
       !this.farmPanel.isOpen &&
+      !this.combatPanel.isOpen &&
+      !this.coopCombat.fighting &&
       !this.activeFarm;
     const result = this.interaction.update({
       dt,
@@ -626,6 +753,8 @@ export class Game {
       list: gatherList,
       inventory: this.inventory,
       skills: this.skills,
+      extraBonusDrops: this.buffs.treeBonusDrops(),
+      onTreeChopped: (toasts) => this.buffs.onTreeChopped(toasts),
     });
 
     this.focusGatherId = result.focus?.id ?? null;
@@ -678,6 +807,13 @@ export class Game {
         this.cookPanel.setOpen(true);
         this.cookPanel.refresh(this.cooking, this.inventory, this.skills);
         break;
+      case "alchemy_table":
+        this.alchemyPanel.setOpen(true);
+        this.alchemyPanel.refresh(this.alchemy, this.inventory, this.skills);
+        break;
+      case "chicken_coop":
+        this.combatPanel.openStart();
+        break;
     }
   }
 
@@ -703,6 +839,8 @@ export class Game {
     }
     this.shopPanel.setOpen(false);
     this.cookPanel.setOpen(false);
+    this.alchemyPanel.setOpen(false);
+    this.combatPanel.setOpen(false);
     this.skillsPanel.setOpen(false);
     this.farmPanel.setOpen(false);
   }
@@ -745,6 +883,38 @@ export class Game {
     this.saveNow();
   }
 
+  /** 背包左键：饮用药水（效果见 data/potions.ts） */
+  private tryDrink(itemId: ItemId): void {
+    if (!isDrinkable(itemId)) {
+      this.pushToast("这个不能喝");
+      return;
+    }
+    if (this.inventory.countOf(itemId) <= 0) {
+      this.pushToast("没有这件物品");
+      return;
+    }
+    const removed = this.inventory.remove(itemId, 1);
+    if (removed <= 0) {
+      this.pushToast("饮用失败");
+      return;
+    }
+    const err = this.buffs.applyDrink(itemId);
+    if (err) {
+      this.inventory.add(itemId, 1);
+      this.pushToast(err);
+      return;
+    }
+    const def = getItem(itemId);
+    const effect = getPotionEffect(itemId);
+    const added = effect?.charges ?? 0;
+    const total = this.buffs.active?.chargesLeft ?? added;
+    this.pushToast(
+      `饮用${def.name} · +${added} 次（共 ${total} 次）`,
+    );
+    this.refreshOpenPanels();
+    this.saveNow();
+  }
+
   private render(): void {
     const { ctx, canvas, world, player } = this;
     const chunk = world.current;
@@ -776,6 +946,11 @@ export class Game {
         progress: this.cooking.progress,
         timeSec: nowDraw,
       },
+      {
+        crafting: this.alchemy.active,
+        progress: this.alchemy.progress,
+        timeSec: nowDraw,
+      },
     );
     drawInteractables(
       ctx,
@@ -784,6 +959,9 @@ export class Game {
       this.focusGatherId,
       this.activeInteract,
     );
+    if (this.world.currentId === "coop" && this.coopCombat.fighting) {
+      drawChickens(ctx, this.coopCombat.chickens, nowSec);
+    }
 
     this.drawPlayer();
     this.drawDayOverlay();
@@ -826,9 +1004,14 @@ export class Game {
       this.shopPanel.isOpen ||
       this.warehousePanel.isOpen ||
       this.cookPanel.isOpen ||
+      this.alchemyPanel.isOpen ||
+      this.combatPanel.isOpen ||
       this.farmPanel.isOpen
     ) {
       return null;
+    }
+    if (this.coopCombat.fighting) {
+      return `战斗中 · E 停止 · 鸡 ${this.coopCombat.aliveCount}`;
     }
     if (this.focusFacility?.kind === "campfire") {
       if (this.campfire.lit) return "E · 熄灭篝火";
@@ -837,6 +1020,13 @@ export class Game {
     if (this.focusFacility?.kind === "cooking_pot") {
       if (this.cooking.active) return "E · 烹饪锅（烹饪中）";
       return "E · 打开烹饪锅";
+    }
+    if (this.focusFacility?.kind === "alchemy_table") {
+      if (this.alchemy.active) return "E · 制药台（制药中）";
+      return "E · 打开制药台";
+    }
+    if (this.focusFacility?.kind === "chicken_coop") {
+      return "E · 开始战斗";
     }
     if (this.focusFacility) {
       return `E · ${this.focusFacility.label}`;
@@ -970,6 +1160,16 @@ export class Game {
     }
     if (this.cooking.active) {
       const f = list.find((x) => x.kind === "cooking_pot");
+      if (f) {
+        lights.push({
+          x: f.x + f.size / 2,
+          y: f.y + f.size * 0.5,
+          warm: false,
+        });
+      }
+    }
+    if (this.alchemy.active) {
+      const f = list.find((x) => x.kind === "alchemy_table");
       if (f) {
         lights.push({
           x: f.x + f.size / 2,
@@ -1114,11 +1314,17 @@ export class Game {
 
   private updateHud(): void {
     const chunk = this.world.current;
-    this.hud.textContent = [
+    const lines = [
       `地图: ${chunk.name}`,
       `时间: ${this.time.phaseLabel()}`,
       `金币: ${this.wallet.gold}`,
       `HP: ${Math.ceil(this.hp)}/${CONFIG.maxHp}`,
-    ].join("\n");
+    ];
+    const buff = this.buffs.statusLine();
+    if (buff) lines.push(`增益: ${buff}`);
+    if (this.coopCombat.fighting) {
+      lines.push(`战斗 · 鸡 ${this.coopCombat.aliveCount}`);
+    }
+    this.hud.textContent = lines.join("\n");
   }
 }

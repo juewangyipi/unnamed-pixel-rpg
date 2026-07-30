@@ -2,16 +2,20 @@ import type { Inventory } from "../systems/inventory.ts";
 import type { Wallet } from "../systems/wallet.ts";
 import type { Shop } from "../systems/shop.ts";
 import { CONFIG } from "../core/config.ts";
+import { getItem, SHOP_BUY_ITEM_IDS, type ItemId } from "../data/items.ts";
+import { getBuyPrice } from "../data/prices.ts";
 
 export type ShopActions = {
   onExpandBag: () => void;
   onExpandWarehouse: () => void;
+  /** 购买货架商品 1 个 */
+  onBuyItem: (itemId: ItemId) => void;
   onClose: () => void;
 };
 
 /**
- * 商店：当前仅扩容服务。
- * 买卖货架暂缓；打开时由 Game 联动背包/仓库，在其上卖东西。
+ * 商店：货架购买（盖鲁姆草等）+ 扩容。
+ * 打开时联动背包/仓库卖物资。
  */
 export class ShopPanel {
   private readonly root: HTMLElement;
@@ -34,7 +38,7 @@ export class ShopPanel {
 
     const hint = document.createElement("div");
     hint.className = "inv-hint";
-    hint.textContent = "背包/仓：左键卖1 · 右键卖全 · Esc/E 关";
+    hint.textContent = "货架可买 · 背包/仓左键卖1右键卖全 · Esc/E 关";
 
     this.root.append(title, this.body, hint);
     host.appendChild(this.root);
@@ -64,18 +68,38 @@ export class ShopPanel {
       el(
         "div",
         "panel-muted",
-        "暂不出售商品。请在左右背包/仓库卖出物资。",
-      ),
-    );
-    this.body.appendChild(
-      el(
-        "div",
-        "panel-muted",
         `背包 ${bag.usedSlots()}/${bag.capacity} · 仓库 ${warehouse.usedSlots()}/${warehouse.capacity}`,
       ),
     );
 
     this.body.appendChild(el("div", "panel-divider", ""));
+    this.body.appendChild(el("div", "panel-sub", "▸ 货架（购买）"));
+
+    for (const id of SHOP_BUY_ITEM_IDS) {
+      const def = getItem(id);
+      const price = getBuyPrice(id);
+      if (price <= 0) continue;
+      const canAfford = wallet.gold >= price;
+      const canFit = bag.canFit(id, 1);
+      let label = `购买 ${def.name}（${price} 金）`;
+      if (!canAfford) label = `${def.name} · 金币不足（需 ${price}）`;
+      else if (!canFit) label = `${def.name} · 背包已满`;
+
+      const b = btn(label, () => this.actions?.onBuyItem(id));
+      if (!canAfford || !canFit) b.disabled = true;
+      this.body.appendChild(b);
+
+      this.body.appendChild(
+        el("div", "panel-muted", `${def.name} · 制药原材料 · ${price} 金/个`),
+      );
+    }
+
+    if (SHOP_BUY_ITEM_IDS.length === 0) {
+      this.body.appendChild(el("div", "panel-muted", "暂无在售商品"));
+    }
+
+    this.body.appendChild(el("div", "panel-divider", ""));
+    this.body.appendChild(el("div", "panel-sub", "▸ 扩容"));
 
     this.body.appendChild(
       btn(
@@ -111,6 +135,6 @@ function btn(
   b.type = "button";
   b.className = variant === "ghost" ? "panel-btn ghost" : "panel-btn";
   b.textContent = label;
-  b.addEventListener("click", onClick);
+  b.addEventListener("click", () => onClick());
   return b;
 }

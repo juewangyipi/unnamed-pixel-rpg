@@ -3,6 +3,7 @@ import {
   GATHER,
   interactableCenter,
   isAvailable,
+  type BonusDrop,
   type Interactable,
   type InteractKind,
 } from "../entities/interactable.ts";
@@ -50,6 +51,10 @@ export class InteractionSystem {
     list: Interactable[];
     inventory: Inventory;
     skills: Skills;
+    /** 药水等临时附加掉落（如鸟巢药水 → 砍树 5% 鸟巢） */
+    extraBonusDrops?: BonusDrop[];
+    /** 成功砍树 1 次后回调（扣药水次数等） */
+    onTreeChopped?: (toasts: Toast[]) => void;
   }): InteractionResult {
     const {
       dt,
@@ -60,6 +65,8 @@ export class InteractionSystem {
       list,
       inventory,
       skills,
+      extraBonusDrops,
+      onTreeChopped,
     } = args;
     const toasts: Toast[] = [];
     this.fullBagCooldown = Math.max(0, this.fullBagCooldown - dt);
@@ -162,13 +169,20 @@ export class InteractionSystem {
                   text: `${rare}+${drop.amount} ${item.name}`,
                   ttl: TOAST_TTL + (rare ? 0.8 : 0),
                 });
-                applyBonusDrops(profile, inventory, toasts, () => {
+                const bonusList: BonusDrop[] = [
+                  ...(profile.bonusDrops ?? []),
+                  ...(active.kind === "tree" ? (extraBonusDrops ?? []) : []),
+                ];
+                applyBonusDrops(bonusList, inventory, toasts, () => {
                   if (this.fullBagCooldown <= 0) {
                     this.fullBagCooldown = 1.2;
                     return true;
                   }
                   return false;
                 });
+                if (active.kind === "tree") {
+                  onTreeChopped?.(toasts);
+                }
                 const ups = skills.addXp(profile.skillId, profile.xp);
                 for (const u of ups) {
                   toasts.push({
@@ -261,15 +275,14 @@ function canFitGatherDrop(
   return inventory.canFit(profile.itemId, profile.amount);
 }
 
-/** 按配置表独立掷骰额外掉落；背包满时最多提示一次。 */
+/** 按列表独立掷骰额外掉落；背包满时最多提示一次。 */
 function applyBonusDrops(
-  profile: (typeof GATHER)[InteractKind],
+  bonuses: BonusDrop[],
   inventory: Inventory,
   toasts: Toast[],
   canToastFull: () => boolean,
 ): void {
-  const bonuses = profile.bonusDrops;
-  if (!bonuses?.length) return;
+  if (!bonuses.length) return;
 
   for (const bonus of bonuses) {
     if (Math.random() >= bonus.chance) continue;
@@ -285,9 +298,10 @@ function applyBonusDrops(
       continue;
     }
     const item = getItem(bonus.itemId);
+    const rare = bonus.itemId === "bird_nest" ? "！ " : "";
     toasts.push({
-      text: `+${bonus.amount} ${item.name}`,
-      ttl: TOAST_TTL,
+      text: `${rare}+${bonus.amount} ${item.name}`,
+      ttl: TOAST_TTL + (rare ? 0.6 : 0),
     });
   }
 }

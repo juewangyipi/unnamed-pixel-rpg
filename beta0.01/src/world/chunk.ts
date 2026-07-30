@@ -4,7 +4,8 @@ export type ChunkId =
   | "grassland"
   | "riverside"
   | "forest"
-  | "mine";
+  | "mine"
+  | "coop";
 
 export type ChunkNeighbors = {
   up?: ChunkId;

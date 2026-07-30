@@ -3,7 +3,7 @@ import type { Facility } from "../entities/facility.ts";
 
 const T = CONFIG.tileSize;
 
-/** 村子设施：商店、仓库、篝火、烹饪锅、存档点 */
+/** 村子设施：商店、仓库、篝火、烹饪锅、制药台、存档点 */
 export function createMapFacilities(): Facility[] {
   return [
     {
@@ -43,6 +43,15 @@ export function createMapFacilities(): Facility[] {
       label: "烹饪锅",
     },
     {
+      id: "vil_alchemy",
+      kind: "alchemy_table",
+      chunkId: "village",
+      x: 12 * T,
+      y: 9 * T,
+      size: T,
+      label: "制药台",
+    },
+    {
       id: "vil_save",
       kind: "save_point",
       chunkId: "village",
@@ -50,6 +59,15 @@ export function createMapFacilities(): Facility[] {
       y: 11 * T,
       size: T,
       label: "存档点",
+    },
+    {
+      id: "coop_gate",
+      kind: "chicken_coop",
+      chunkId: "coop",
+      x: 9 * T,
+      y: 6 * T,
+      size: T * 2,
+      label: "鸡舍",
     },
   ];
 }

@@ -18,7 +18,7 @@
 import type { ItemId } from "./items.ts";
 
 /** 当前已配置的可食用食物 id */
-export type FoodId = "apple" | "cooked_shrimp";
+export type FoodId = "apple" | "cooked_shrimp" | "cooked_chicken";
 
 export type FoodEffect = {
   /** 食用 1 个恢复的生命值 */
@@ -36,6 +36,7 @@ export const FOOD_EFFECTS: Record<FoodId, FoodEffect> = {
   //          回血
   apple: { healHp: 8 },
   cooked_shrimp: { healHp: 10 },
+  cooked_chicken: { healHp: 18 },
 };
 
 // ---------- 读取接口（代码里用，一般不用改） ----------

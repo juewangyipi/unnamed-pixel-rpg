@@ -15,8 +15,7 @@ export type ShopState = {
 };
 
 /**
- * 商店：卖物资（经背包/仓库点击）、扩背包/仓库。
- * 从商店购买货架商品：后置，见 buyOne（保留实现，UI 暂不暴露）。
+ * 商店：货架购买、卖物资（背包/仓库点击）、扩背包/仓库。
  */
 export class Shop {
   bagExpandLevel = 0;
@@ -30,16 +29,14 @@ export class Shop {
     return warehouseExpandPrice(this.warehouseExpandLevel);
   }
 
-  /**
-   * 从商店买 1 个进背包（功能保留，当前 UI 未开放）。
-   * @internal 后续版本商店货架启用
-   */
+  /** 从商店买 1 个进背包（如盖鲁姆草） */
   buyOne(
     inv: Inventory,
     wallet: Wallet,
     itemId: ItemId,
   ): string | null {
     const price = getBuyPrice(itemId);
+    if (price <= 0) return "此物暂不出售";
     if (!wallet.spend(price)) {
       return `金币不足（需 ${price}）`;
     }

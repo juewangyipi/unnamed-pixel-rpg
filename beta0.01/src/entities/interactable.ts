@@ -80,8 +80,9 @@ export const GATHER: Record<InteractKind, GatherProfile> = {
     amount: 1,
     xp: 5,
     duration: 3,
-    hitsToDeplete: 10,
-    respawn: 10,
+    /** 砍满次数后进入冷却 */
+    hitsToDeplete: 15,
+    respawn: 3,
     mode: "auto",
     label: "砍树",
     bonusDrops: [{ itemId: "apple", amount: 1, chance: 0.05 }],
@@ -125,6 +126,8 @@ export const GATHER: Record<InteractKind, GatherProfile> = {
 };
 
 export function isAvailable(it: Interactable, nowSec: number): boolean {
+  // 永不耗尽类型忽略冷却时间（含旧档里残留的 depletedUntil）
+  if (GATHER[it.kind].hitsToDeplete === 0) return true;
   return nowSec >= it.depletedUntil;
 }
 

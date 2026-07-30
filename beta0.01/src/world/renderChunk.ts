@@ -17,6 +17,7 @@ const TILE_FOR_CHUNK: Record<string, SpriteName> = {
   forest: "tile_forest",
   // 矿区暂用村砖 + 装饰，缺专用矿砖时不崩
   mine: "tile_village",
+  coop: "tile_grass",
 };
 
 /**
@@ -138,6 +139,19 @@ function drawDecor(
         w: tile,
         h: tile,
       });
+      break;
+    }
+    case "coop": {
+      // 围栏感：四边灌木 + 中间空地
+      for (let tx = 1; tx < 19; tx += 2) {
+        drawSprite(ctx, "bush", tx * tile, 1 * tile, { w: tile, h: tile });
+        drawSprite(ctx, "bush", tx * tile, 13 * tile, { w: tile, h: tile });
+      }
+      for (let ty = 2; ty < 13; ty += 2) {
+        drawSprite(ctx, "bush", 1 * tile, ty * tile, { w: tile, h: tile });
+        drawSprite(ctx, "bush", 18 * tile, ty * tile, { w: tile, h: tile });
+      }
+      paintPathRow(ctx, height / 2 - tile / 2, width, tile);
       break;
     }
     case "forest": {

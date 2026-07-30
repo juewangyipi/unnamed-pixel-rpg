@@ -4,13 +4,13 @@ import { CONFIG } from "../core/config.ts";
 /**
  * 地图邻接：
  *
- *              forest
- *                │
+ *              forest ── coop
+ *                │        │
  *   mine ── village ── grassland
  *                │
  *            riverside
  *
- * 村子：上森林 · 下河边 · 右草地 · 左矿区
+ * 鸡舍：森林左边 · 矿区上边
  */
 const CHUNKS: Record<ChunkId, Chunk> = {
   village: {
@@ -52,7 +52,10 @@ const CHUNKS: Record<ChunkId, Chunk> = {
     gridColor: "#28402b",
     widthTiles: CONFIG.viewTilesW,
     heightTiles: CONFIG.viewTilesH,
-    neighbors: { down: "village" },
+    neighbors: {
+      down: "village",
+      left: "coop",
+    },
   },
   mine: {
     id: "mine",
@@ -61,7 +64,22 @@ const CHUNKS: Record<ChunkId, Chunk> = {
     gridColor: "#2e2e36",
     widthTiles: CONFIG.viewTilesW,
     heightTiles: CONFIG.viewTilesH,
-    neighbors: { right: "village" },
+    neighbors: {
+      right: "village",
+      up: "coop",
+    },
+  },
+  coop: {
+    id: "coop",
+    name: "鸡舍",
+    groundColor: "#5a6b3a",
+    gridColor: "#4a5a32",
+    widthTiles: CONFIG.viewTilesW,
+    heightTiles: CONFIG.viewTilesH,
+    neighbors: {
+      right: "forest",
+      down: "mine",
+    },
   },
 };
 

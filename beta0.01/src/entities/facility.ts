@@ -5,7 +5,9 @@ export type FacilityKind =
   | "warehouse"
   | "save_point"
   | "campfire"
-  | "cooking_pot";
+  | "cooking_pot"
+  | "alchemy_table"
+  | "chicken_coop";
 
 export type Facility = {
   id: string;

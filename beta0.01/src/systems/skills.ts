@@ -21,6 +21,8 @@ export class Skills {
     firemaking: { level: 1, xp: 0 },
     cooking: { level: 1, xp: 0 },
     mining: { level: 1, xp: 0 },
+    alchemy: { level: 1, xp: 0 },
+    combat: { level: 1, xp: 0 },
   };
 
   get(id: SkillId): SkillState {
@@ -57,6 +59,8 @@ export class Skills {
       firemaking: { ...this.states.firemaking },
       cooking: { ...this.states.cooking },
       mining: { ...this.states.mining },
+      alchemy: { ...this.states.alchemy },
+      combat: { ...this.states.combat },
     };
   }
 

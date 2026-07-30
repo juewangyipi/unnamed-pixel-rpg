@@ -1,7 +1,7 @@
 import type { ItemId } from "./items.ts";
 import type { SkillId } from "./skills.ts";
 
-export type RecipeId = "cooked_shrimp";
+export type RecipeId = "cooked_shrimp" | "cooked_chicken";
 
 export type Recipe = {
   id: RecipeId;
@@ -16,7 +16,7 @@ export type Recipe = {
   skillId: SkillId;
 };
 
-/** 可烹饪配方（先做生虾 → 熟虾） */
+/** 可烹饪配方 */
 export const RECIPES: Record<RecipeId, Recipe> = {
   cooked_shrimp: {
     id: "cooked_shrimp",
@@ -25,6 +25,15 @@ export const RECIPES: Record<RecipeId, Recipe> = {
     outputId: "cooked_shrimp",
     cookSec: 5,
     xp: 6,
+    skillId: "cooking",
+  },
+  cooked_chicken: {
+    id: "cooked_chicken",
+    label: "熟鸡肉",
+    inputId: "raw_chicken",
+    outputId: "cooked_chicken",
+    cookSec: 5,
+    xp: 7,
     skillId: "cooking",
   },
 };
