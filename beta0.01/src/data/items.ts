@@ -225,8 +225,8 @@ export const ITEMS: Record<ItemId, ItemDef> = ITEM_BASE;
 export const ITEM_IDS: ItemId[] = Object.keys(ITEM_BASE) as ItemId[];
 
 /**
- * 商店可购买货架（参考：盖鲁姆草 50 金/棵）。
- * 以后加商品只往这个数组塞 id，并在 prices.ts 写好 buy。
+ * 商店可购买货架（当前仅盖鲁姆草 50 金/棵）。
+ * 以后加商品：加入本数组，并在 prices.ts 写好 buy > 0。
  */
 export const SHOP_BUY_ITEM_IDS: ItemId[] = ["galum_grass"];
 

@@ -470,6 +470,23 @@ export class Game {
     if (offlineToasts.length === 0) {
       this.pushToast("已读取本地存档");
     }
+
+    // 本机一次性：已有存档 +10000 金（标记后不再发）
+    this.applyOneTimeGoldGrant(10_000);
+  }
+
+  /** 仅本机 localStorage 标记，不进存档版本逻辑；只跑一次 */
+  private applyOneTimeGoldGrant(amount: number): void {
+    const flagKey = `${CONFIG.saveKey}::grant-gold-1w-v1`;
+    try {
+      if (localStorage.getItem(flagKey) === "1") return;
+      this.wallet.gold += amount;
+      localStorage.setItem(flagKey, "1");
+      this.pushToast(`+${amount} 金币`);
+      this.saveNow();
+    } catch {
+      /* 无 localStorage 则跳过 */
+    }
   }
 
   private saveNow(): void {
@@ -922,8 +939,8 @@ export class Game {
     const gatherList = this.interactables.forChunk(world.currentId);
     const facilityList = this.facilities.forChunk(world.currentId);
 
-    renderChunkBackground(ctx, chunk, canvas.width, canvas.height);
     const nowDraw = performance.now() / 1000;
+    renderChunkBackground(ctx, chunk, canvas.width, canvas.height, nowDraw);
     const farmList = this.farms.forChunk(world.currentId);
     drawFarmPlots(
       ctx,
@@ -1081,18 +1098,26 @@ export class Game {
 
   private drawPlayer(): void {
     const { ctx, player } = this;
+    // 行走微弹：1～2px，阴影反向压扁
+    const bob = player.moving ? Math.round(Math.sin(player.walkPhase) * 1.6) : 0;
+    const squash = player.moving
+      ? 1 - Math.abs(Math.sin(player.walkPhase)) * 0.08
+      : 1;
+    const shadowRx = player.size * 0.36 * (2 - squash);
+    const shadowRy = player.size * 0.12 * squash;
+
     drawShadow(
       ctx,
       player.x + player.size / 2,
       player.y + player.size - 1,
-      player.size * 0.36,
-      player.size * 0.12,
+      shadowRx,
+      shadowRy,
     );
     const ok = drawSprite(
       ctx,
       this.playerSprite(player.facing),
       player.x,
-      player.y,
+      player.y - bob,
       { w: player.size, h: player.size },
     );
     if (ok) return;
@@ -1100,13 +1125,13 @@ export class Game {
     ctx.fillStyle = "#f0d28a";
     ctx.fillRect(
       Math.round(player.x),
-      Math.round(player.y),
+      Math.round(player.y - bob),
       player.size,
       player.size,
     );
     ctx.fillStyle = "#2a2010";
     const cx = Math.round(player.x) + player.size / 2;
-    const cy = Math.round(player.y) + player.size / 2;
+    const cy = Math.round(player.y - bob) + player.size / 2;
     const n = 3;
     switch (player.facing) {
       case "up":

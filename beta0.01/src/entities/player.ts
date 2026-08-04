@@ -10,6 +10,10 @@ export class Player {
   y: number;
   facing: Facing = "down";
   readonly size: number;
+  /** 是否在移动（用于行走微弹） */
+  moving = false;
+  /** 行走相位（秒累计） */
+  walkPhase = 0;
 
   constructor(x: number, y: number) {
     this.x = x;
@@ -20,7 +24,10 @@ export class Player {
   /** 只负责位移与朝向，允许短暂出界以便 World 检测切屏。 */
   update(dt: number, axis: MoveAxis): void {
     let { x: ax, y: ay } = axis;
-    if (ax === 0 && ay === 0) return;
+    if (ax === 0 && ay === 0) {
+      this.moving = false;
+      return;
+    }
 
     const len = Math.hypot(ax, ay);
     ax /= len;
@@ -29,6 +36,8 @@ export class Player {
     const speed = CONFIG.playerSpeed * CONFIG.tileSize;
     this.x += ax * speed * dt;
     this.y += ay * speed * dt;
+    this.moving = true;
+    this.walkPhase += dt * 9;
 
     if (Math.abs(ax) > Math.abs(ay)) {
       this.facing = ax > 0 ? "right" : "left";

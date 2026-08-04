@@ -35,7 +35,7 @@ python art\generate_sprites.py
 | 基础格 | 16×16 px |
 | 画面逻辑分辨率 | 320×240（20×15 格） |
 | 显示 | CSS 放大 + `image-rendering: pixelated` |
-| 风格 | 北欧奇幻感 · 统一色板 · 透明底 |
+| 风格 | 档位 B：戴夫海感青蓝 × 北欧草地 · 见 `STYLE.md` |
 | 格式 | PNG（RGBA）进游戏；ASE 给人改 |
 
 ## 文件清单
@@ -50,7 +50,9 @@ python art\generate_sprites.py
 | `house.png` | 村落中心小屋（48×32） |
 | `tile_*.png` | 地砖平铺 |
 | `bush.png` | 装饰灌木 |
-| `item_wood` / `item_fish` | 背包图标（已用手绘 `nor_wood_32` / `nor_shrimp_32`） |
+| `item_wood` | 背包图标（手绘 `nor_wood_32`） |
+| `item_raw_shrimp` | 生虾图标（青灰粉程序稿） |
+| `item_cooked_shrimp` | 熟虾图标（手绘 `nor_shrimp_32`） |
 | `tree.png` | 可砍树（已用 `nor_trees_32x40`） |
 | `focus_ring.png` | 互动高亮框 |
 
@@ -61,7 +63,7 @@ python art\generate_sprites.py
 - `beta0.01/public/assets/wood/` · `shrimp/` · `trees/` · `maps/`
 - `art/src/migrated-from-v0.1/`（源备份）
 
-`generate_sprites.py` 若存在上述备份，会优先用手绘图覆盖 `item_wood` / `item_fish` / `tree`，不会被程序生成稿冲掉。
+`generate_sprites.py` 若存在上述备份，会优先用手绘图覆盖 `item_wood` / `item_cooked_shrimp` / `tree`，不会被程序生成稿冲掉。
 
 ## 和游戏代码的关系
 

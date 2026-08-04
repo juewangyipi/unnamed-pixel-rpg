@@ -1,5 +1,5 @@
 import type { ItemId } from "../data/items.ts";
-import { ITEMS } from "../data/items.ts";
+import { ITEMS, SHOP_BUY_ITEM_IDS } from "../data/items.ts";
 import { getBuyPrice, getSellPrice } from "../data/prices.ts";
 import {
   bagExpandPrice,
@@ -29,12 +29,15 @@ export class Shop {
     return warehouseExpandPrice(this.warehouseExpandLevel);
   }
 
-  /** 从商店买 1 个进背包（如盖鲁姆草） */
+  /** 从商店买 1 个进背包（仅货架：盖鲁姆草） */
   buyOne(
     inv: Inventory,
     wallet: Wallet,
     itemId: ItemId,
   ): string | null {
+    if (!SHOP_BUY_ITEM_IDS.includes(itemId)) {
+      return "此物暂不出售";
+    }
     const price = getBuyPrice(itemId);
     if (price <= 0) return "此物暂不出售";
     if (!wallet.spend(price)) {

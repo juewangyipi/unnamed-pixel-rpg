@@ -165,14 +165,23 @@ export class InventoryPanel {
 }
 
 function itemIcon(id: ItemId): string | null {
-  if (id === "wood") return "item_wood.png";
-  if (id === "apple") return "item_apple.png";
-  if (
-    id === "raw_shrimp" ||
-    id === "cooked_shrimp" ||
-    id === "crayfish"
-  ) {
-    return "item_fish.png";
-  }
-  return null;
+  const map: Partial<Record<ItemId, string>> = {
+    wood: "item_wood.png",
+    apple: "item_apple.png",
+    raw_shrimp: "item_raw_shrimp.png",
+    cooked_shrimp: "item_cooked_shrimp.png",
+    crayfish: "item_crayfish.png",
+    feather: "item_feather.png",
+    bone: "item_bone.png",
+    raw_chicken: "item_raw_chicken.png",
+    cooked_chicken: "item_cooked_chicken.png",
+    galum_grass: "item_galum_grass.png",
+    bird_nest_potion: "item_bird_nest_potion.png",
+    bird_nest: "item_bird_nest.png",
+    treasure_chest: "item_treasure_chest.png",
+    coal: "item_coal.png",
+    rune_essence: "item_rune_essence.png",
+    copper_ore: "item_copper_ore.png",
+  };
+  return map[id] ?? null;
 }

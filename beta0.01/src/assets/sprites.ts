@@ -18,13 +18,18 @@ export type SpriteName =
   | "house"
   | "bush"
   | "tile_grass"
+  | "tile_grass2"
   | "tile_path"
+  | "tile_path2"
   | "tile_water"
+  | "tile_water2"
   | "tile_water_edge"
   | "tile_forest"
+  | "tile_forest2"
   | "tile_village"
+  | "tile_village2"
   | "item_wood"
-  | "item_fish"
+  | "item_raw_shrimp"
   | "focus_ring";
 
 const NAMES: SpriteName[] = [
@@ -42,15 +47,29 @@ const NAMES: SpriteName[] = [
   "house",
   "bush",
   "tile_grass",
+  "tile_grass2",
   "tile_path",
+  "tile_path2",
   "tile_water",
+  "tile_water2",
   "tile_water_edge",
   "tile_forest",
+  "tile_forest2",
   "tile_village",
+  "tile_village2",
   "item_wood",
-  "item_fish",
+  "item_raw_shrimp",
   "focus_ring",
 ];
+
+/** 主地砖 → 变体（打破重复感） */
+const TILE_VARIANT: Partial<Record<SpriteName, SpriteName>> = {
+  tile_grass: "tile_grass2",
+  tile_path: "tile_path2",
+  tile_water: "tile_water2",
+  tile_forest: "tile_forest2",
+  tile_village: "tile_village2",
+};
 
 const cache = new Map<SpriteName, HTMLImageElement>();
 let ready = false;
@@ -98,15 +117,9 @@ export function hasSprites(): boolean {
 }
 
 export type DrawSpriteOpts = {
-  /** 目标宽；默认原图像素宽 */
   w?: number;
-  /** 目标高；默认原图像素高 */
   h?: number;
   alpha?: number;
-  /**
-   * 脚底对齐：用 (x,y,footW,footH) 表示碰撞/占位矩形，
-   * 图片底部落在 foot 底边，水平居中（适合比格子更高的树/柱）。
-   */
   foot?: { w: number; h: number };
 };
 
@@ -136,7 +149,7 @@ export function drawSprite(
   return true;
 }
 
-/** 脚下椭圆阴影（增强立体感）。 */
+/** 双层冷色阴影（接触影 + 柔影）。 */
 export function drawShadow(
   ctx: CanvasRenderingContext2D,
   cx: number,
@@ -144,15 +157,32 @@ export function drawShadow(
   rx: number,
   ry: number,
 ): void {
+  const x = Math.round(cx);
+  const y = Math.round(cy);
   ctx.save();
-  ctx.fillStyle = "rgba(0,0,0,0.28)";
+  // 外柔影
+  ctx.fillStyle = "rgba(6, 18, 32, 0.16)";
   ctx.beginPath();
-  ctx.ellipse(Math.round(cx), Math.round(cy), rx, ry, 0, 0, Math.PI * 2);
+  ctx.ellipse(x, y, rx * 1.25, ry * 1.35, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // 内接触影
+  ctx.fillStyle = "rgba(8, 24, 40, 0.34)";
+  ctx.beginPath();
+  ctx.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2);
   ctx.fill();
   ctx.restore();
 }
 
-/** 平铺地砖铺满区域。 */
+function hashTile(tx: number, ty: number): number {
+  // 稳定伪随机，用于变体选择
+  let n = (tx * 374761393 + ty * 668265263) | 0;
+  n = (n ^ (n >>> 13)) * 1274126177;
+  return (n ^ (n >>> 16)) >>> 0;
+}
+
+/**
+ * 平铺地砖；若有 *2 变体则按格子交错，减少重复感。
+ */
 export function tileSprite(
   ctx: CanvasRenderingContext2D,
   name: SpriteName,
@@ -160,12 +190,30 @@ export function tileSprite(
   height: number,
   tile = 16,
 ): boolean {
-  const img = getSprite(name);
-  if (!img) return false;
+  const primary = getSprite(name);
+  if (!primary) return false;
+  const variantName = TILE_VARIANT[name];
+  const secondary = variantName ? getSprite(variantName) : null;
   ctx.imageSmoothingEnabled = false;
-  for (let y = 0; y < height; y += tile) {
-    for (let x = 0; x < width; x += tile) {
-      ctx.drawImage(img, x, y, tile, tile);
+  const cols = Math.ceil(width / tile);
+  const rows = Math.ceil(height / tile);
+  for (let ty = 0; ty < rows; ty++) {
+    for (let tx = 0; tx < cols; tx++) {
+      const useB = secondary && (hashTile(tx, ty) & 1) === 1;
+      const img = useB && secondary ? secondary : primary;
+      // 偶发水平翻转，进一步打散 tiling
+      const flip = (hashTile(tx + 3, ty + 7) & 3) === 0;
+      const x = tx * tile;
+      const y = ty * tile;
+      if (flip) {
+        ctx.save();
+        ctx.translate(x + tile, y);
+        ctx.scale(-1, 1);
+        ctx.drawImage(img, 0, 0, tile, tile);
+        ctx.restore();
+      } else {
+        ctx.drawImage(img, x, y, tile, tile);
+      }
     }
   }
   return true;

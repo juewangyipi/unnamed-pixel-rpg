@@ -9,23 +9,24 @@
 }
 
 :root {
-  --px-bg: #0e1410;
-  --px-panel: #1c241c;
-  --px-panel-deep: #121812;
-  --px-slot: #2a3228;
-  --px-slot-empty: #1a2018;
-  --px-border: #c9b57a;
-  --px-border-dark: #4a3c22;
-  --px-border-mid: #7a6538;
-  --px-text: #e8f0d8;
-  --px-text-dim: #8a9878;
+  /* 戴夫海青 × 北欧草地 UI 底色 */
+  --px-bg: #0c1418;
+  --px-panel: #142028;
+  --px-panel-deep: #0e161c;
+  --px-slot: #1e3038;
+  --px-slot-empty: #121c22;
+  --px-border: #7ec8d4;
+  --px-border-dark: #1a4050;
+  --px-border-mid: #3a7888;
+  --px-text: #e0f0f0;
+  --px-text-dim: #7a9aa0;
   --px-text-gold: #ffe08a;
-  --px-text-title: #fff4c0;
-  --px-btn: #3a4a32;
-  --px-btn-hi: #4e6440;
-  --px-btn-edge: #a8c070;
+  --px-text-title: #c8f0f8;
+  --px-btn: #2a4a52;
+  --px-btn-hi: #3a6870;
+  --px-btn-edge: #70c0c8;
   --px-danger: #c45a4a;
-  --px-shadow: #050806;
+  --px-shadow: #040a0e;
   --font-ui: "Press Start 2P", "Fusion Pixel", "Sarasa Mono SC",
     "Microsoft YaHei UI", "Microsoft YaHei", ui-monospace, monospace;
 }
@@ -36,10 +37,10 @@ body {
   height: 100%;
   overflow: hidden;
   /* 像素格子感底图 */
-  background-color: #0a0e0c;
+  background-color: #080e12;
   background-image:
-    linear-gradient(rgba(40, 55, 40, 0.15) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(40, 55, 40, 0.15) 1px, transparent 1px);
+    linear-gradient(rgba(30, 60, 70, 0.14) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(30, 60, 70, 0.14) 1px, transparent 1px);
   background-size: 8px 8px;
   color: var(--px-text);
   font-family: var(--font-ui);
@@ -65,7 +66,7 @@ body {
   aspect-ratio: 640 / 480;
   image-rendering: pixelated;
   image-rendering: crisp-edges;
-  background: #12181a;
+  background: #0e181c;
   border-radius: 0;
   /* 多层像素框 */
   border: 2px solid var(--px-border);

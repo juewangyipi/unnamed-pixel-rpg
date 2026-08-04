@@ -15,19 +15,19 @@ const TILE_FOR_CHUNK: Record<string, SpriteName> = {
   grassland: "tile_grass",
   riverside: "tile_grass",
   forest: "tile_forest",
-  // 矿区暂用村砖 + 装饰，缺专用矿砖时不崩
   mine: "tile_village",
   coop: "tile_grass",
 };
 
 /**
- * 画当前块：像素地砖 + 装饰 + 出口提示。
+ * 画当前块：地砖变体 + 装饰深度排序 + 氛围层 + 出口。
  */
 export function renderChunkBackground(
   ctx: CanvasRenderingContext2D,
   chunk: Chunk,
   width: number,
   height: number,
+  timeSec = 0,
 ): void {
   const { tileSize } = CONFIG;
   const tileName = TILE_FOR_CHUNK[chunk.id] ?? "tile_grass";
@@ -37,8 +37,8 @@ export function renderChunkBackground(
     ctx.fillRect(0, 0, width, height);
   }
 
-  // 极淡网格（几乎看不见，只帮认路）
-  ctx.strokeStyle = "rgba(0,0,0,0.04)";
+  // 极淡网格
+  ctx.strokeStyle = "rgba(0,0,0,0.035)";
   ctx.lineWidth = 1;
   ctx.beginPath();
   for (let x = 0; x <= width; x += tileSize) {
@@ -51,9 +51,197 @@ export function renderChunkBackground(
   }
   ctx.stroke();
 
-  drawDecor(ctx, chunk, width, height, tileSize);
+  // 地面微 AO（角暗），增强景深底板
+  drawGroundAO(ctx, width, height);
+
+  drawDecor(ctx, chunk, width, height, tileSize, timeSec);
+  drawAmbient(ctx, chunk, width, height, timeSec);
+  drawParticles(ctx, chunk, width, height, timeSec);
   drawExitEdges(ctx, chunk, width, height, tileSize);
 }
+
+function drawGroundAO(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+): void {
+  const g = ctx.createRadialGradient(
+    width / 2,
+    height / 2,
+    Math.min(width, height) * 0.2,
+    width / 2,
+    height / 2,
+    Math.max(width, height) * 0.7,
+  );
+  g.addColorStop(0, "rgba(0,0,0,0)");
+  g.addColorStop(0.7, "rgba(0,0,0,0)");
+  g.addColorStop(1, "rgba(4, 14, 22, 0.14)");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, width, height);
+}
+
+/** 天光 / vignette / 路径暖带 / 水面焦散 */
+function drawAmbient(
+  ctx: CanvasRenderingContext2D,
+  chunk: Chunk,
+  width: number,
+  height: number,
+  timeSec: number,
+): void {
+  const skyStrength =
+    chunk.id === "village"
+      ? 0.16
+      : chunk.id === "riverside"
+        ? 0.12
+        : chunk.id === "forest"
+          ? 0.05
+          : 0.08;
+
+  // 双层天光：冷青 + 淡绿
+  const sky = ctx.createLinearGradient(0, 0, 0, height * 0.5);
+  sky.addColorStop(0, `rgba(100, 190, 220, ${skyStrength})`);
+  sky.addColorStop(0.4, `rgba(120, 200, 180, ${skyStrength * 0.4})`);
+  sky.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, width, height * 0.5);
+
+  // 侧向斜光（模拟太阳从左上）
+  const sun = ctx.createLinearGradient(0, 0, width * 0.7, height * 0.6);
+  sun.addColorStop(0, "rgba(255, 240, 200, 0.045)");
+  sun.addColorStop(0.55, "rgba(255, 240, 200, 0)");
+  sun.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.fillStyle = sun;
+  ctx.fillRect(0, 0, width, height);
+
+  // 底部冷 vignette
+  const vig = ctx.createRadialGradient(
+    width / 2,
+    height * 0.52,
+    Math.min(width, height) * 0.22,
+    width / 2,
+    height * 0.58,
+    Math.max(width, height) * 0.75,
+  );
+  vig.addColorStop(0, "rgba(0,0,0,0)");
+  vig.addColorStop(1, "rgba(4, 16, 28, 0.22)");
+  ctx.fillStyle = vig;
+  ctx.fillRect(0, 0, width, height);
+
+  if (chunk.id === "riverside") {
+    drawWaterCaustics(ctx, width, height, CONFIG.tileSize, timeSec);
+  }
+
+  if (chunk.id === "village") {
+    const pathY = height / 2 + CONFIG.tileSize * 0.5;
+    const glow = ctx.createLinearGradient(0, pathY - 24, 0, pathY + 32);
+    glow.addColorStop(0, "rgba(0,0,0,0)");
+    glow.addColorStop(0.4, "rgba(255, 228, 160, 0.055)");
+    glow.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = glow;
+    ctx.fillRect(0, pathY - 24, width, 56);
+
+    // 屋后淡雾（纵深）
+    const fog = ctx.createLinearGradient(0, height * 0.15, 0, height * 0.4);
+    fog.addColorStop(0, "rgba(180, 220, 230, 0.06)");
+    fog.addColorStop(1, "rgba(180, 220, 230, 0)");
+    ctx.fillStyle = fog;
+    ctx.fillRect(0, height * 0.12, width, height * 0.28);
+  }
+
+  if (chunk.id === "forest") {
+    ctx.fillStyle = "rgba(10, 30, 20, 0.08)";
+    ctx.fillRect(0, 0, width, height);
+  }
+}
+
+/** 水面焦散 + 岸线泡沫 */
+function drawWaterCaustics(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  tile: number,
+  timeSec: number,
+): void {
+  const waterX = width - tile * 4;
+  const t = timeSec;
+  ctx.save();
+
+  // 半透明水色叠加加深
+  ctx.fillStyle = "rgba(20, 90, 120, 0.08)";
+  ctx.fillRect(waterX, 0, tile * 4, height);
+
+  // 焦散斑点
+  for (let i = 0; i < 16; i++) {
+    const phase = t * (0.9 + i * 0.13) + i * 1.9;
+    const x =
+      waterX +
+      tile * 0.35 +
+      ((Math.sin(phase) * 0.5 + 0.5) * (tile * 3.4));
+    const y = ((phase * 22 + i * 41) % (height + 24)) - 12;
+    const a = 0.1 + (Math.sin(phase * 2.2) * 0.5 + 0.5) * 0.22;
+    const px = Math.round(x);
+    const py = Math.round(y);
+    ctx.fillStyle = `rgba(200, 245, 255, ${a})`;
+    ctx.fillRect(px, py, 3, 1);
+    ctx.fillRect(px + 1, py - 1, 1, 2);
+    if (i % 3 === 0) {
+      ctx.fillStyle = `rgba(255, 255, 255, ${a * 0.5})`;
+      ctx.fillRect(px + 2, py, 1, 1);
+    }
+  }
+
+  // 岸线泡沫脉动
+  const foam = 0.1 + Math.sin(t * 2.2) * 0.05;
+  ctx.fillStyle = `rgba(190, 235, 245, ${foam})`;
+  for (let y = 0; y < height; y += 3) {
+    if ((y + Math.floor(t * 4)) % 7 < 2) {
+      ctx.fillRect(waterX + tile - 2, y, 3, 2);
+    }
+  }
+
+  // 深水渐变（右侧更深）
+  const deep = ctx.createLinearGradient(waterX + tile, 0, width, 0);
+  deep.addColorStop(0, "rgba(8, 40, 60, 0)");
+  deep.addColorStop(1, "rgba(6, 30, 48, 0.18)");
+  ctx.fillStyle = deep;
+  ctx.fillRect(waterX + tile, 0, tile * 3, height);
+  ctx.restore();
+}
+
+/** 花粉 / 尘埃微粒 */
+function drawParticles(
+  ctx: CanvasRenderingContext2D,
+  chunk: Chunk,
+  width: number,
+  height: number,
+  timeSec: number,
+): void {
+  if (chunk.id === "mine") return;
+  const count = chunk.id === "village" ? 14 : chunk.id === "forest" ? 10 : 8;
+  const warm = chunk.id === "village" || chunk.id === "grassland";
+  ctx.save();
+  for (let i = 0; i < count; i++) {
+    const seed = i * 17.13;
+    const drift = timeSec * (8 + (i % 5)) + seed * 20;
+    const x = ((Math.sin(seed) * 0.5 + 0.5) * width + drift * 0.35) % width;
+    const y =
+      ((Math.cos(seed * 1.3) * 0.5 + 0.5) * height +
+        Math.sin(timeSec * 0.7 + seed) * 12) %
+      height;
+    const a = 0.12 + (Math.sin(timeSec + seed) * 0.5 + 0.5) * 0.18;
+    ctx.fillStyle = warm
+      ? `rgba(255, 240, 180, ${a})`
+      : `rgba(180, 230, 240, ${a})`;
+    const s = 1 + (i % 3 === 0 ? 1 : 0);
+    ctx.fillRect(Math.round(x), Math.round(y), s, s);
+  }
+  ctx.restore();
+}
+
+type DecorItem = {
+  y: number;
+  draw: () => void;
+};
 
 function drawDecor(
   ctx: CanvasRenderingContext2D,
@@ -61,50 +249,29 @@ function drawDecor(
   width: number,
   height: number,
   tile: number,
+  _timeSec: number,
 ): void {
-  switch (chunk.id) {
-    case "village": {
-      const house = getSprite("house");
-      if (house) {
-        const bx = Math.round((width - house.naturalWidth) / 2);
-        const by = Math.round(height * 0.28 - house.naturalHeight * 0.15);
-        drawSprite(ctx, "house", bx, by);
-      } else {
-        const bw = tile * 3;
-        const bh = tile * 2;
-        const bx = (width - bw) / 2;
-        const by = (height - bh) / 2 - tile;
-        ctx.fillStyle = "#6b5344";
-        ctx.fillRect(bx, by, bw, bh);
-      }
-      // 石板小径（横贯）
-      paintPathRow(ctx, height / 2 + tile * 0.5, width, tile);
-      // 院落灌木
-      for (const [tx, ty] of [
-        [2, 3],
-        [17, 3],
-        [1, 11],
-        [18, 11],
-      ] as [number, number][]) {
-        drawSprite(ctx, "bush", tx * tile, ty * tile, {
-          w: tile,
-          h: tile,
-        });
-      }
-      break;
-    }
-    case "grassland": {
-      paintPathRow(ctx, height / 2 - tile / 2, width, tile);
-      const bushes: [number, number][] = [
-        [2, 2],
-        [16, 3],
-        [3, 12],
-        [15, 11],
-        [9, 4],
-        [12, 12],
-        [5, 8],
-      ];
-      for (const [tx, ty] of bushes) {
+  const items: DecorItem[] = [];
+
+  const pushBush = (tx: number, ty: number) => {
+    items.push({
+      y: ty * tile + tile,
+      draw: () => {
+        // 脚底影
+        ctx.save();
+        ctx.fillStyle = "rgba(8, 24, 40, 0.2)";
+        ctx.beginPath();
+        ctx.ellipse(
+          tx * tile + tile * 0.5,
+          ty * tile + tile * 0.88,
+          tile * 0.32,
+          tile * 0.1,
+          0,
+          0,
+          Math.PI * 2,
+        );
+        ctx.fill();
+        ctx.restore();
         if (
           !drawSprite(ctx, "bush", tx * tile, ty * tile, {
             w: tile,
@@ -114,11 +281,121 @@ function drawDecor(
           ctx.fillStyle = "rgba(40, 80, 45, 0.5)";
           ctx.fillRect(tx * tile + 2, ty * tile + 2, tile - 4, tile - 4);
         }
+      },
+    });
+  };
+
+  const pushTree = (tx: number, ty: number) => {
+    items.push({
+      y: ty * tile + tile,
+      draw: () => {
+        ctx.save();
+        ctx.fillStyle = "rgba(8, 24, 40, 0.24)";
+        ctx.beginPath();
+        ctx.ellipse(
+          tx * tile + tile * 0.5,
+          ty * tile + tile * 0.92,
+          tile * 0.28,
+          tile * 0.1,
+          0,
+          0,
+          Math.PI * 2,
+        );
+        ctx.fill();
+        ctx.restore();
+        drawSprite(ctx, "tree", tx * tile, ty * tile - 10, {
+          foot: { w: tile, h: tile },
+        });
+      },
+    });
+  };
+
+  switch (chunk.id) {
+    case "village": {
+      // 路径先画（在装饰下）
+      paintPathRow(ctx, height / 2 + tile * 0.5, width, tile, true);
+
+      const house = getSprite("house");
+      if (house) {
+        const bx = Math.round((width - house.naturalWidth) / 2);
+        const by = Math.round(height * 0.28 - house.naturalHeight * 0.15);
+        items.push({
+          y: by + house.naturalHeight,
+          draw: () => {
+            // 建筑接触影 + 柔影
+            ctx.save();
+            ctx.fillStyle = "rgba(6, 18, 32, 0.18)";
+            ctx.beginPath();
+            ctx.ellipse(
+              bx + house.naturalWidth / 2,
+              by + house.naturalHeight - 1,
+              house.naturalWidth * 0.48,
+              8,
+              0,
+              0,
+              Math.PI * 2,
+            );
+            ctx.fill();
+            ctx.fillStyle = "rgba(8, 24, 40, 0.28)";
+            ctx.beginPath();
+            ctx.ellipse(
+              bx + house.naturalWidth / 2,
+              by + house.naturalHeight - 1,
+              house.naturalWidth * 0.38,
+              5,
+              0,
+              0,
+              Math.PI * 2,
+            );
+            ctx.fill();
+            ctx.restore();
+            drawSprite(ctx, "house", bx, by);
+          },
+        });
+      }
+
+      const bushes: [number, number][] = [
+        [2, 3],
+        [17, 3],
+        [1, 11],
+        [18, 11],
+        [4, 5],
+        [15, 5],
+        [3, 9],
+        [16, 9],
+        [8, 2],
+        [11, 2],
+        [6, 12],
+        [13, 12],
+      ];
+      for (const [tx, ty] of bushes) pushBush(tx, ty);
+      for (const [tx, ty] of [
+        [5, 4],
+        [13, 4],
+        [2, 7],
+        [17, 7],
+      ] as [number, number][]) {
+        pushTree(tx, ty);
+      }
+      break;
+    }
+    case "grassland": {
+      paintPathRow(ctx, height / 2 - tile / 2, width, tile, true);
+      for (const [tx, ty] of [
+        [2, 2],
+        [16, 3],
+        [3, 12],
+        [15, 11],
+        [9, 4],
+        [12, 12],
+        [5, 8],
+        [18, 8],
+      ] as [number, number][]) {
+        pushBush(tx, ty);
       }
       break;
     }
     case "riverside": {
-      // 右侧水域；最左一列用水岸过渡砖，其余纯水
       const waterX = width - tile * 4;
       for (let y = 0; y < height; y += tile) {
         drawSprite(ctx, "tile_water_edge", waterX, y, {
@@ -126,36 +403,49 @@ function drawDecor(
           h: tile,
         });
         for (let i = 1; i < 4; i++) {
-          drawSprite(ctx, "tile_water", waterX + i * tile, y, {
-            w: tile,
-            h: tile,
-          });
+          // 水砖变体交错
+          const wn: SpriteName =
+            ((y / tile + i) | 0) % 2 === 0 ? "tile_water" : "tile_water2";
+          if (
+            !drawSprite(ctx, wn, waterX + i * tile, y, {
+              w: tile,
+              h: tile,
+            })
+          ) {
+            drawSprite(ctx, "tile_water", waterX + i * tile, y, {
+              w: tile,
+              h: tile,
+            });
+          }
         }
       }
-      // 横向小路通到水边（盖在草地上）
-      paintPathRow(ctx, height / 2 - tile / 2, waterX + tile, tile);
-      // 岸边小路最后一格用岸砖衔接
-      drawSprite(ctx, "tile_path", waterX - tile, Math.round(height / 2 - tile / 2), {
-        w: tile,
-        h: tile,
-      });
+      paintPathRow(ctx, height / 2 - tile / 2, waterX + tile, tile, true);
+      drawSprite(
+        ctx,
+        "tile_path",
+        waterX - tile,
+        Math.round(height / 2 - tile / 2),
+        { w: tile, h: tile },
+      );
+      pushBush(3, 3);
+      pushBush(8, 11);
+      pushTree(5, 5);
       break;
     }
     case "coop": {
-      // 围栏感：四边灌木 + 中间空地
       for (let tx = 1; tx < 19; tx += 2) {
-        drawSprite(ctx, "bush", tx * tile, 1 * tile, { w: tile, h: tile });
-        drawSprite(ctx, "bush", tx * tile, 13 * tile, { w: tile, h: tile });
+        pushBush(tx, 1);
+        pushBush(tx, 13);
       }
       for (let ty = 2; ty < 13; ty += 2) {
-        drawSprite(ctx, "bush", 1 * tile, ty * tile, { w: tile, h: tile });
-        drawSprite(ctx, "bush", 18 * tile, ty * tile, { w: tile, h: tile });
+        pushBush(1, ty);
+        pushBush(18, ty);
       }
-      paintPathRow(ctx, height / 2 - tile / 2, width, tile);
+      paintPathRow(ctx, height / 2 - tile / 2, width, tile, true);
       break;
     }
     case "forest": {
-      const bushes: [number, number][] = [
+      for (const [tx, ty] of [
         [1, 1],
         [18, 2],
         [2, 13],
@@ -164,26 +454,25 @@ function drawDecor(
         [14, 14],
         [0, 7],
         [19, 8],
-      ];
-      for (const [tx, ty] of bushes) {
-        if (
-          !drawSprite(ctx, "bush", tx * tile, ty * tile, {
-            w: tile,
-            h: tile,
-          })
-        ) {
-          ctx.fillStyle = "rgba(30, 60, 35, 0.45)";
-          ctx.fillRect(tx * tile + 2, ty * tile + 2, tile - 4, tile - 4);
-        }
+        [6, 5],
+        [12, 9],
+      ] as [number, number][]) {
+        pushBush(tx, ty);
+      }
+      for (const [tx, ty] of [
+        [4, 3],
+        [15, 4],
+        [8, 11],
+        [12, 2],
+      ] as [number, number][]) {
+        pushTree(tx, ty);
       }
       break;
     }
     case "mine": {
-      // 岩地暗色叠层 + 碎石点缀
       ctx.fillStyle = "rgba(20, 20, 28, 0.35)";
       ctx.fillRect(0, 0, width, height);
-      // 通往村子的东向小路
-      paintPathRow(ctx, height / 2 - tile / 2, width, tile);
+      paintPathRow(ctx, height / 2 - tile / 2, width, tile, false);
       const rocks: [number, number][] = [
         [2, 2],
         [17, 2],
@@ -193,34 +482,55 @@ function drawDecor(
         [11, 14],
       ];
       for (const [tx, ty] of rocks) {
-        ctx.fillStyle = "#4a4a55";
-        ctx.beginPath();
-        ctx.ellipse(
-          tx * tile + tile * 0.5,
-          ty * tile + tile * 0.55,
-          tile * 0.28,
-          tile * 0.18,
-          0,
-          0,
-          Math.PI * 2,
-        );
-        ctx.fill();
-        ctx.fillStyle = "#5a5a68";
-        ctx.beginPath();
-        ctx.ellipse(
-          tx * tile + tile * 0.42,
-          ty * tile + tile * 0.48,
-          tile * 0.14,
-          tile * 0.1,
-          -0.3,
-          0,
-          Math.PI * 2,
-        );
-        ctx.fill();
+        items.push({
+          y: ty * tile + tile,
+          draw: () => {
+            ctx.fillStyle = "rgba(8, 24, 40, 0.25)";
+            ctx.beginPath();
+            ctx.ellipse(
+              tx * tile + tile * 0.5,
+              ty * tile + tile * 0.7,
+              tile * 0.32,
+              tile * 0.12,
+              0,
+              0,
+              Math.PI * 2,
+            );
+            ctx.fill();
+            ctx.fillStyle = "#4a4a55";
+            ctx.beginPath();
+            ctx.ellipse(
+              tx * tile + tile * 0.5,
+              ty * tile + tile * 0.55,
+              tile * 0.28,
+              tile * 0.18,
+              0,
+              0,
+              Math.PI * 2,
+            );
+            ctx.fill();
+            ctx.fillStyle = "#6a6a78";
+            ctx.beginPath();
+            ctx.ellipse(
+              tx * tile + tile * 0.42,
+              ty * tile + tile * 0.48,
+              tile * 0.14,
+              tile * 0.1,
+              -0.3,
+              0,
+              Math.PI * 2,
+            );
+            ctx.fill();
+          },
+        });
       }
       break;
     }
   }
+
+  // Y 排序绘制，近大远小的前后遮挡感
+  items.sort((a, b) => a.y - b.y);
+  for (const it of items) it.draw();
 }
 
 function paintPathRow(
@@ -228,14 +538,24 @@ function paintPathRow(
   y: number,
   width: number,
   tile: number,
+  softEdge: boolean,
 ): void {
   const yy = Math.round(y);
-  for (let x = 0; x < width; x += tile) {
-    if (
-      !drawSprite(ctx, "tile_path", x, yy, { w: tile, h: tile })
-    ) {
-      ctx.fillStyle = "#6d7a45";
-      ctx.fillRect(x, yy, tile, tile);
+  if (softEdge) {
+    // 路缘淡影，让路嵌进草地
+    ctx.fillStyle = "rgba(40, 30, 18, 0.12)";
+    ctx.fillRect(0, yy - 2, width, tile + 4);
+    ctx.fillStyle = "rgba(20, 40, 30, 0.08)";
+    ctx.fillRect(0, yy - 1, width, 2);
+    ctx.fillRect(0, yy + tile - 1, width, 2);
+  }
+  for (let x = 0, i = 0; x < width; x += tile, i++) {
+    const name: SpriteName = i % 2 === 0 ? "tile_path" : "tile_path2";
+    if (!drawSprite(ctx, name, x, yy, { w: tile, h: tile })) {
+      if (!drawSprite(ctx, "tile_path", x, yy, { w: tile, h: tile })) {
+        ctx.fillStyle = "#6d7a45";
+        ctx.fillRect(x, yy, tile, tile);
+      }
     }
   }
 }
@@ -254,7 +574,7 @@ function drawExitEdges(
     const nextId = chunk.neighbors[dir];
     if (!nextId) continue;
 
-    ctx.fillStyle = "rgba(255, 220, 100, 0.35)";
+    ctx.fillStyle = "rgba(120, 210, 230, 0.3)";
     switch (dir) {
       case "left":
         ctx.fillRect(0, 0, band, height);
@@ -271,14 +591,18 @@ function drawExitEdges(
     }
 
     const label = getChunk(nextId).name;
-    ctx.fillStyle = "rgba(255, 250, 220, 0.95)";
+    ctx.fillStyle = "rgba(230, 250, 255, 0.95)";
     ctx.font = "13px 'Segoe UI', system-ui, sans-serif";
     ctx.textBaseline = "middle";
-    // 描边让字在亮/暗地上都清晰
-    const drawLabel = (text: string, x: number, y: number, align: CanvasTextAlign) => {
+    const drawLabel = (
+      text: string,
+      x: number,
+      y: number,
+      align: CanvasTextAlign,
+    ) => {
       ctx.textAlign = align;
       ctx.lineWidth = 3;
-      ctx.strokeStyle = "rgba(0,0,0,0.55)";
+      ctx.strokeStyle = "rgba(8, 24, 40, 0.65)";
       ctx.strokeText(text, x, y);
       ctx.fillText(text, x, y);
     };
