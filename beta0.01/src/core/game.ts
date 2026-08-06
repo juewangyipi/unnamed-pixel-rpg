@@ -4,12 +4,14 @@ import {
   viewWidthPx,
 } from "./config.ts";
 import { Input } from "./input.ts";
-import { Player, type Facing } from "../entities/player.ts";
+import { Player } from "../entities/player.ts";
+import type { Facing } from "../entities/player.ts";
 import { World } from "../world/world.ts";
 import { renderChunkBackground } from "../world/renderChunk.ts";
 import { Inventory } from "../systems/inventory.ts";
 import { Skills } from "../systems/skills.ts";
-import { InteractionSystem, type Toast } from "../systems/interaction.ts";
+import { InteractionSystem } from "../systems/interaction.ts";
+import type { Toast } from "../systems/interaction.ts";
 import { InteractableStore } from "../systems/interactableStore.ts";
 import { FacilityStore } from "../systems/facilityStore.ts";
 import { findFacilityFocus } from "../systems/facilityInteraction.ts";
@@ -42,16 +44,22 @@ import {
   FarmInteraction,
   findFarmFocus,
 } from "../systems/farmInteraction.ts";
-import { GATHER, type InteractKind } from "../entities/interactable.ts";
-import { farmPhase, type FarmPlot } from "../entities/farmPlot.ts";
+import { GATHER, isAvailable } from "../entities/interactable.ts";
+import type { Interactable, InteractKind } from "../entities/interactable.ts";
+import { farmPhase } from "../entities/farmPlot.ts";
+import type { FarmPlot } from "../entities/farmPlot.ts";
 import { getCrop } from "../data/crops.ts";
 import type { Facility } from "../entities/facility.ts";
-import { loadSave, writeSave, type SavePointData } from "../save/saveGame.ts";
-import { getItem, type ItemId } from "../data/items.ts";
+import { loadSave, writeSave } from "../save/saveGame.ts";
+import type { SavePointData } from "../save/saveGame.ts";
+import { getItem } from "../data/items.ts";
+import type { ItemId } from "../data/items.ts";
 import { getFoodHeal, isEdible } from "../data/foods.ts";
 import { getPotionEffect, isDrinkable } from "../data/potions.ts";
-import { drawShadow, drawSprite, type SpriteName } from "../assets/sprites.ts";
+import { drawShadow, drawSprite } from "../assets/sprites.ts";
+import type { SpriteName } from "../assets/sprites.ts";
 import { drawPlayerFrame } from "../assets/playerAnim.ts";
+import type { PlayerAnimKind } from "../assets/playerAnim.ts";
 import { drawFarmPlots } from "../world/drawFarmPlots.ts";
 import { drawChickens } from "../world/drawChickens.ts";
 
@@ -570,7 +578,7 @@ export class Game {
 
     this.time.update(dt);
 
-    // 战斗中：自动追鸡，禁用手动移动与切屏
+    // 战斗中：自动追鸡 + 挥砍动画；禁用手动移动与切屏
     if (this.coopCombat.fighting) {
       const bounds = this.world.boundsPx();
       const fight = this.coopCombat.update({
@@ -586,6 +594,10 @@ export class Game {
         this.bagDirty = true;
       }
     } else {
+      // 离开战斗时清掉 combat 动作，避免卡在挥砍
+      if (this.player.action === "combat") {
+        this.player.action = "none";
+      }
       const axis = this.input.getMoveAxis();
       this.player.update(dt, axis);
 
@@ -761,6 +773,11 @@ export class Game {
     this.focusGatherId = result.focus?.id ?? null;
     this.activeInteract = result.active;
     if (result.lastGatherKind) this.lastGatherKind = result.lastGatherKind;
+
+    // 采集动作（战斗中由 coopCombat 驱动，不覆盖 combat 挥砍）
+    if (!this.coopCombat.fighting) {
+      this.syncGatherAction(result.active, nowSec);
+    }
 
     if (result.toasts.length) {
       this.toasts.push(...result.toasts);
@@ -959,9 +976,14 @@ export class Game {
       nowSec,
       this.focusGatherId,
       this.activeInteract,
+      {
+        timeSec: nowDraw,
+        playerCx: player.x + player.size / 2,
+        playerCy: player.y + player.size * 0.35,
+      },
     );
     if (this.world.currentId === "coop" && this.coopCombat.fighting) {
-      drawChickens(ctx, this.coopCombat.chickens, nowSec);
+      drawChickens(ctx, this.coopCombat.chickens, nowSec, nowDraw);
     }
 
     this.drawPlayer();
@@ -1080,12 +1102,66 @@ export class Game {
     }
   }
 
+  /** 根据当前采集目标切换角色动作，并面向资源 */
+  private syncGatherAction(
+    active: Interactable | null,
+    nowSec: number,
+  ): void {
+    if (!active) {
+      this.player.action = "none";
+      return;
+    }
+
+    this.player.faceToward(
+      active.x + active.size / 2,
+      active.y + active.size / 2,
+    );
+
+    // 冷却等待：面向目标但不挥砍
+    if (!isAvailable(active, nowSec)) {
+      this.player.action = "none";
+      return;
+    }
+
+    switch (active.kind) {
+      case "tree":
+        this.player.action = "chop";
+        break;
+      case "rune_node":
+      case "copper_node":
+        this.player.action = "mine";
+        break;
+      case "fish_spot":
+        this.player.action = "fish";
+        break;
+      default:
+        this.player.action = "none";
+    }
+  }
+
+  private playerAnimKind(): PlayerAnimKind {
+    switch (this.player.action) {
+      case "chop":
+      case "mine":
+      case "combat":
+        return "attack";
+      case "fish":
+        return "cast";
+      default:
+        return this.player.moving ? "walk" : "idle";
+    }
+  }
+
   private drawPlayer(): void {
     const { ctx, player } = this;
-    // 阴影随步伐压扁；精灵表 walk 帧自带起伏，不再叠代码 bob
+    const anim = this.playerAnimKind();
+    const acting = anim === "attack" || anim === "cast";
+    // 阴影随步伐压扁；动作时略压
     const squash = player.moving
       ? 1 - Math.abs(Math.sin(player.walkPhase)) * 0.08
-      : 1;
+      : acting
+        ? 1 - Math.abs(Math.sin(player.walkPhase * 1.2)) * 0.05
+        : 1;
     const shadowRx = player.size * 0.36 * (2 - squash);
     const shadowRy = player.size * 0.12 * squash;
 
@@ -1097,12 +1173,12 @@ export class Game {
       shadowRy,
     );
 
-    // 优先：Mystic Woods 精灵表 idle / walk
+    // 优先：Mystic Woods 精灵表（idle / walk / attack / cast）
     if (
       drawPlayerFrame(
         ctx,
         player.facing,
-        player.moving,
+        anim,
         player.walkPhase,
         player.x,
         player.y,
@@ -1112,10 +1188,12 @@ export class Game {
       return;
     }
 
-    // 回退：四向单帧 PNG + 微弹
+    // 回退：四向单帧 PNG + 微弹 / 动作微移
     const bob = player.moving
       ? Math.round(Math.sin(player.walkPhase) * 1.6)
-      : 0;
+      : acting
+        ? Math.round(Math.sin(player.walkPhase) * 1.2)
+        : 0;
     const ok = drawSprite(
       ctx,
       this.playerSprite(player.facing),

@@ -5,26 +5,38 @@ import {
 } from "../entities/interactable.ts";
 import { drawShadow, drawSprite, getSprite } from "../assets/sprites.ts";
 
-/** 绘制当前图互动物 + 焦点高亮 + 蓄力条 */
+export type GatherAnimContext = {
+  /** 墙钟或 performance 秒，用于粒子相位 */
+  timeSec: number;
+  /** 玩家中心，画钓线用 */
+  playerCx: number;
+  playerCy: number;
+};
+
+/** 绘制当前图互动物 + 焦点高亮 + 蓄力条 + 采集反馈动画 */
 export function drawInteractables(
   ctx: CanvasRenderingContext2D,
   list: Interactable[],
   nowSec: number,
   focusId: string | null,
   active: Interactable | null,
+  anim?: GatherAnimContext,
 ): void {
+  const t = anim?.timeSec ?? nowSec;
+
   for (const it of list) {
     const available = isAvailable(it, nowSec);
     const focused = focusId === it.id;
+    const gathering = !!(active && active.id === it.id && available);
 
     if (it.kind === "tree") {
-      drawTree(ctx, it, available, focused);
+      drawTree(ctx, it, available, focused, gathering, t);
     } else if (it.kind === "fish_spot") {
-      drawFishSpot(ctx, it, available, focused);
+      drawFishSpot(ctx, it, available, focused, gathering, t, anim);
     } else if (it.kind === "rune_node") {
-      drawMineNode(ctx, it, available, focused, "rune");
+      drawMineNode(ctx, it, available, focused, "rune", gathering, t);
     } else if (it.kind === "copper_node") {
-      drawMineNode(ctx, it, available, focused, "copper");
+      drawMineNode(ctx, it, available, focused, "copper", gathering, t);
     }
 
     if (available && (it.progress > 0 || (active && active.id === it.id))) {
@@ -76,29 +88,50 @@ function drawTree(
   it: Interactable,
   available: boolean,
   focused: boolean,
+  gathering: boolean,
+  t: number,
 ): void {
   const { x, y, size } = it;
-  drawShadow(ctx, x + size / 2, y + size - 2, size * 0.38, size * 0.12);
+  // 砍树时左右微颤，progress 越高抖越狠
+  let ox = 0;
+  if (gathering && available) {
+    const hit = Math.sin(t * 28) * (1.2 + it.progress * 2.2);
+    ox = Math.round(hit);
+  }
+
+  drawShadow(ctx, x + size / 2 + ox, y + size - 2, size * 0.38, size * 0.12);
   if (focused) drawFocus(ctx, x, y, size);
 
   const name = available ? "tree" : "tree_stump";
   const alpha = available ? 1 : 0.95;
   const img = getSprite(name);
   if (
-    !drawSprite(ctx, name, x, y, {
+    !drawSprite(ctx, name, x + ox, y, {
       alpha,
       foot: { w: size, h: size },
-      // 保持原像素比例，不硬拉成正方形
       w: img?.naturalWidth,
       h: img?.naturalHeight,
     })
   ) {
     ctx.fillStyle = available ? "#5a3d28" : "#3a3a3a";
-    ctx.fillRect(x + size * 0.35, y + size * 0.45, size * 0.3, size * 0.5);
+    ctx.fillRect(x + size * 0.35 + ox, y + size * 0.45, size * 0.3, size * 0.5);
     ctx.fillStyle = available ? "#2f7a3e" : "#4a4a4a";
     ctx.beginPath();
-    ctx.arc(x + size / 2, y + size * 0.35, size * 0.42, 0, Math.PI * 2);
+    ctx.arc(x + size / 2 + ox, y + size * 0.35, size * 0.42, 0, Math.PI * 2);
     ctx.fill();
+  }
+
+  // 木屑
+  if (gathering && available) {
+    const cx = x + size / 2 + ox;
+    const cy = y + size * 0.45;
+    for (let i = 0; i < 5; i++) {
+      const phase = t * (6 + i) + i * 1.3;
+      const px = cx + Math.sin(phase) * (6 + i * 2) + ox * 0.3;
+      const py = cy - ((phase * 10 + i * 5) % 18);
+      ctx.fillStyle = `rgba(180, 140, 80, ${0.35 + (i % 2) * 0.25})`;
+      ctx.fillRect(Math.round(px), Math.round(py), 2, 2);
+    }
   }
 }
 
@@ -107,8 +140,13 @@ function drawFishSpot(
   it: Interactable,
   available: boolean,
   focused: boolean,
+  gathering: boolean,
+  t: number,
+  anim?: GatherAnimContext,
 ): void {
   const { x, y, size } = it;
+  const cx = x + size / 2;
+  const cy = y + size / 2;
   if (focused) drawFocus(ctx, x, y, size);
 
   const name = available ? "fish_spot" : "fish_spot_empty";
@@ -122,16 +160,41 @@ function drawFishSpot(
       ? "rgba(80, 180, 220, 0.55)"
       : "rgba(80,80,90,0.4)";
     ctx.beginPath();
-    ctx.ellipse(
-      x + size / 2,
-      y + size / 2,
-      size * 0.45,
-      size * 0.28,
-      0,
-      0,
-      Math.PI * 2,
-    );
+    ctx.ellipse(cx, cy, size * 0.45, size * 0.28, 0, 0, Math.PI * 2);
     ctx.fill();
+  }
+
+  // 水面涟漪
+  if (gathering && available) {
+    for (let i = 0; i < 3; i++) {
+      const wave = ((t * 1.4 + i * 0.33) % 1);
+      const r = size * (0.15 + wave * 0.35);
+      ctx.strokeStyle = `rgba(180, 230, 255, ${0.45 * (1 - wave)})`;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.ellipse(cx, cy + 2, r, r * 0.45, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    // 鱼漂轻点
+    const bob = Math.sin(t * 5) * 2;
+    ctx.fillStyle = "#c45a3a";
+    ctx.beginPath();
+    ctx.arc(cx + Math.sin(t * 2) * 3, cy + bob - 2, 2.2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#fff0c0";
+    ctx.fillRect(Math.round(cx + Math.sin(t * 2) * 3 - 1), Math.round(cy + bob - 6), 2, 4);
+
+    // 钓线：玩家 → 鱼点
+    if (anim) {
+      ctx.strokeStyle = "rgba(220, 230, 240, 0.55)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(anim.playerCx, anim.playerCy - 4);
+      const midX = (anim.playerCx + cx) / 2;
+      const midY = Math.min(anim.playerCy, cy) - 12 - Math.sin(t * 3) * 2;
+      ctx.quadraticCurveTo(midX, midY, cx + Math.sin(t * 2) * 3, cy + bob - 2);
+      ctx.stroke();
+    }
   }
 }
 
@@ -142,9 +205,15 @@ function drawMineNode(
   available: boolean,
   focused: boolean,
   variant: "rune" | "copper",
+  gathering: boolean,
+  t: number,
 ): void {
   const { x, y, size } = it;
-  const cx = x + size / 2;
+  const shake =
+    gathering && available
+      ? Math.round(Math.sin(t * 32) * (1 + it.progress * 1.5))
+      : 0;
+  const cx = x + size / 2 + shake;
   const cy = y + size * 0.55;
   drawShadow(ctx, cx, y + size - 2, size * 0.36, size * 0.12);
   if (focused) drawFocus(ctx, x, y, size);
@@ -159,15 +228,18 @@ function drawMineNode(
         ? "#c4783a"
         : "#5a4030";
 
+  ctx.save();
+  ctx.translate(shake, 0);
+
   // 岩块
   ctx.fillStyle = base;
   ctx.beginPath();
-  ctx.moveTo(cx - size * 0.32, cy + size * 0.12);
-  ctx.lineTo(cx - size * 0.2, cy - size * 0.28);
-  ctx.lineTo(cx + size * 0.1, cy - size * 0.35);
-  ctx.lineTo(cx + size * 0.35, cy - size * 0.08);
-  ctx.lineTo(cx + size * 0.28, cy + size * 0.2);
-  ctx.lineTo(cx - size * 0.15, cy + size * 0.28);
+  ctx.moveTo(x + size * 0.18, cy + size * 0.12);
+  ctx.lineTo(x + size * 0.3, cy - size * 0.28);
+  ctx.lineTo(x + size * 0.6, cy - size * 0.35);
+  ctx.lineTo(x + size * 0.85, cy - size * 0.08);
+  ctx.lineTo(x + size * 0.78, cy + size * 0.2);
+  ctx.lineTo(x + size * 0.35, cy + size * 0.28);
   ctx.closePath();
   ctx.fill();
 
@@ -188,6 +260,24 @@ function drawMineNode(
     ctx.fill();
   }
   ctx.globalAlpha = 1;
+  ctx.restore();
+
+  // 火花 / 矿屑
+  if (gathering && available) {
+    const sparkColor =
+      variant === "rune" ? "rgba(160, 200, 255, 0.85)" : "rgba(255, 200, 100, 0.85)";
+    for (let i = 0; i < 6; i++) {
+      const phase = t * (8 + i * 0.7) + i;
+      const ang = phase * 1.7;
+      const dist = 4 + ((phase * 14) % 14);
+      const px = cx + Math.cos(ang) * dist;
+      const py = cy - 4 - ((phase * 11) % 16);
+      ctx.fillStyle = sparkColor;
+      ctx.globalAlpha = 0.4 + (i % 3) * 0.2;
+      ctx.fillRect(Math.round(px), Math.round(py), 2, 2);
+    }
+    ctx.globalAlpha = 1;
+  }
 }
 
 function drawProgress(ctx: CanvasRenderingContext2D, it: Interactable): void {

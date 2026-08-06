@@ -9,6 +9,11 @@ export type Chicken = {
   respawnAt: number;
   /** 游走相位 */
   wanderT: number;
+  /** 受击闪白剩余秒（视觉） */
+  hitFlash: number;
+  /** 击退方向（像素/秒，短衰减） */
+  knockVx: number;
+  knockVy: number;
 };
 
 export function isChickenAlive(c: Chicken, nowSec: number): boolean {
