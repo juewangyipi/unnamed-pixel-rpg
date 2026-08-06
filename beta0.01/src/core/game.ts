@@ -471,23 +471,6 @@ export class Game {
     if (offlineToasts.length === 0) {
       this.pushToast("已读取本地存档");
     }
-
-    // 本机一次性：已有存档 +10000 金（标记后不再发）
-    this.applyOneTimeGoldGrant(10_000);
-  }
-
-  /** 仅本机 localStorage 标记，不进存档版本逻辑；只跑一次 */
-  private applyOneTimeGoldGrant(amount: number): void {
-    const flagKey = `${CONFIG.saveKey}::grant-gold-1w-v1`;
-    try {
-      if (localStorage.getItem(flagKey) === "1") return;
-      this.wallet.gold += amount;
-      localStorage.setItem(flagKey, "1");
-      this.pushToast(`+${amount} 金币`);
-      this.saveNow();
-    } catch {
-      /* 无 localStorage 则跳过 */
-    }
   }
 
   private saveNow(): void {
