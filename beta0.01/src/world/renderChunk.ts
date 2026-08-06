@@ -253,33 +253,41 @@ function drawDecor(
 ): void {
   const items: DecorItem[] = [];
 
-  const pushBush = (tx: number, ty: number) => {
+  const footShadow = (cx: number, cy: number, rx: number, ry: number) => {
+    ctx.save();
+    ctx.fillStyle = "rgba(8, 24, 40, 0.22)";
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  };
+
+  const pushBush = (tx: number, ty: number, variant = 0) => {
+    const spr: SpriteName = variant % 2 === 0 ? "bush" : "bush2";
     items.push({
       y: ty * tile + tile,
       draw: () => {
-        // 脚底影
-        ctx.save();
-        ctx.fillStyle = "rgba(8, 24, 40, 0.2)";
-        ctx.beginPath();
-        ctx.ellipse(
+        footShadow(
           tx * tile + tile * 0.5,
           ty * tile + tile * 0.88,
           tile * 0.32,
           tile * 0.1,
-          0,
-          0,
-          Math.PI * 2,
         );
-        ctx.fill();
-        ctx.restore();
         if (
-          !drawSprite(ctx, "bush", tx * tile, ty * tile, {
+          !drawSprite(ctx, spr, tx * tile, ty * tile, {
             w: tile,
             h: tile,
           })
         ) {
-          ctx.fillStyle = "rgba(40, 80, 45, 0.5)";
-          ctx.fillRect(tx * tile + 2, ty * tile + 2, tile - 4, tile - 4);
+          if (
+            !drawSprite(ctx, "bush", tx * tile, ty * tile, {
+              w: tile,
+              h: tile,
+            })
+          ) {
+            ctx.fillStyle = "rgba(40, 80, 45, 0.5)";
+            ctx.fillRect(tx * tile + 2, ty * tile + 2, tile - 4, tile - 4);
+          }
         }
       },
     });
@@ -289,22 +297,45 @@ function drawDecor(
     items.push({
       y: ty * tile + tile,
       draw: () => {
-        ctx.save();
-        ctx.fillStyle = "rgba(8, 24, 40, 0.24)";
-        ctx.beginPath();
-        ctx.ellipse(
+        footShadow(
           tx * tile + tile * 0.5,
           ty * tile + tile * 0.92,
-          tile * 0.28,
-          tile * 0.1,
-          0,
-          0,
-          Math.PI * 2,
+          tile * 0.3,
+          tile * 0.11,
         );
-        ctx.fill();
-        ctx.restore();
-        drawSprite(ctx, "tree", tx * tile, ty * tile - 10, {
+        const tree = getSprite("tree");
+        if (tree) {
+          drawSprite(ctx, "tree", tx * tile, ty * tile - 10, {
+            foot: { w: tile, h: tile },
+            w: tree.naturalWidth,
+            h: tree.naturalHeight,
+          });
+        }
+      },
+    });
+  };
+
+  const pushDeco = (
+    tx: number,
+    ty: number,
+    spr: SpriteName,
+    footY = 0.9,
+  ) => {
+    items.push({
+      y: ty * tile + tile * footY,
+      draw: () => {
+        const img = getSprite(spr);
+        if (!img) return;
+        footShadow(
+          tx * tile + tile * 0.5,
+          ty * tile + tile * footY,
+          tile * 0.22,
+          tile * 0.08,
+        );
+        drawSprite(ctx, spr, tx * tile + (tile - img.naturalWidth) / 2, ty * tile, {
           foot: { w: tile, h: tile },
+          w: img.naturalWidth,
+          h: img.naturalHeight,
         });
       },
     });
@@ -354,21 +385,21 @@ function drawDecor(
         });
       }
 
-      const bushes: [number, number][] = [
-        [2, 3],
-        [17, 3],
-        [1, 11],
-        [18, 11],
-        [4, 5],
-        [15, 5],
-        [3, 9],
-        [16, 9],
-        [8, 2],
-        [11, 2],
-        [6, 12],
-        [13, 12],
+      const bushes: [number, number, number?][] = [
+        [2, 3, 0],
+        [17, 3, 1],
+        [1, 11, 1],
+        [18, 11, 0],
+        [4, 5, 0],
+        [15, 5, 1],
+        [3, 9, 1],
+        [16, 9, 0],
+        [8, 2, 0],
+        [11, 2, 1],
+        [6, 12, 1],
+        [13, 12, 0],
       ];
-      for (const [tx, ty] of bushes) pushBush(tx, ty);
+      for (const [tx, ty, v] of bushes) pushBush(tx, ty, v ?? 0);
       for (const [tx, ty] of [
         [5, 4],
         [13, 4],
@@ -377,22 +408,32 @@ function drawDecor(
       ] as [number, number][]) {
         pushTree(tx, ty);
       }
+      // 村落道具：木桶 / 木箱 / 路牌 / 石块
+      pushDeco(7, 6, "deco_barrel");
+      pushDeco(12, 6, "deco_crate");
+      pushDeco(9, 10, "deco_chest");
+      pushDeco(14, 9, "deco_sign");
+      pushDeco(4, 10, "deco_rock");
+      pushDeco(15, 3, "deco_rock");
       break;
     }
     case "grassland": {
       paintPathRow(ctx, height / 2 - tile / 2, width, tile, true);
-      for (const [tx, ty] of [
-        [2, 2],
-        [16, 3],
-        [3, 12],
-        [15, 11],
-        [9, 4],
-        [12, 12],
-        [5, 8],
-        [18, 8],
-      ] as [number, number][]) {
-        pushBush(tx, ty);
-      }
+      const glBushes: [number, number, number][] = [
+        [2, 2, 0],
+        [16, 3, 1],
+        [3, 12, 1],
+        [15, 11, 0],
+        [9, 4, 0],
+        [12, 12, 1],
+        [5, 8, 1],
+        [18, 8, 0],
+      ];
+      for (const [tx, ty, v] of glBushes) pushBush(tx, ty, v);
+      pushDeco(7, 6, "deco_rock");
+      pushDeco(14, 5, "deco_rock");
+      pushDeco(4, 10, "deco_barrel");
+      pushTree(10, 9);
       break;
     }
     case "riverside": {
@@ -427,103 +468,76 @@ function drawDecor(
         Math.round(height / 2 - tile / 2),
         { w: tile, h: tile },
       );
-      pushBush(3, 3);
-      pushBush(8, 11);
+      pushBush(3, 3, 0);
+      pushBush(8, 11, 1);
+      pushBush(11, 4, 1);
       pushTree(5, 5);
+      pushDeco(7, 9, "deco_rock");
+      pushDeco(2, 8, "deco_barrel");
       break;
     }
     case "coop": {
       for (let tx = 1; tx < 19; tx += 2) {
-        pushBush(tx, 1);
-        pushBush(tx, 13);
+        pushBush(tx, 1, tx % 4 === 1 ? 0 : 1);
+        pushBush(tx, 13, tx % 4 === 1 ? 1 : 0);
       }
       for (let ty = 2; ty < 13; ty += 2) {
-        pushBush(1, ty);
-        pushBush(18, ty);
+        pushBush(1, ty, ty % 4 === 0 ? 0 : 1);
+        pushBush(18, ty, ty % 4 === 0 ? 1 : 0);
       }
       paintPathRow(ctx, height / 2 - tile / 2, width, tile, true);
+      pushDeco(6, 5, "deco_crate");
+      pushDeco(13, 5, "deco_barrel");
+      pushDeco(9, 10, "deco_rock");
+      pushDeco(4, 8, "deco_sign");
       break;
     }
     case "forest": {
-      for (const [tx, ty] of [
-        [1, 1],
-        [18, 2],
-        [2, 13],
-        [17, 12],
-        [9, 1],
-        [14, 14],
-        [0, 7],
-        [19, 8],
-        [6, 5],
-        [12, 9],
-      ] as [number, number][]) {
-        pushBush(tx, ty);
-      }
+      const fBushes: [number, number, number][] = [
+        [1, 1, 0],
+        [18, 2, 1],
+        [2, 13, 1],
+        [17, 12, 0],
+        [9, 1, 0],
+        [14, 14, 1],
+        [0, 7, 1],
+        [19, 8, 0],
+        [6, 5, 0],
+        [12, 9, 1],
+      ];
+      for (const [tx, ty, v] of fBushes) pushBush(tx, ty, v);
       for (const [tx, ty] of [
         [4, 3],
         [15, 4],
         [8, 11],
         [12, 2],
+        [10, 7],
       ] as [number, number][]) {
         pushTree(tx, ty);
       }
+      pushDeco(7, 8, "deco_rock");
+      pushDeco(13, 12, "deco_rock");
+      pushDeco(3, 6, "deco_barrel");
       break;
     }
     case "mine": {
       ctx.fillStyle = "rgba(20, 20, 28, 0.35)";
       ctx.fillRect(0, 0, width, height);
       paintPathRow(ctx, height / 2 - tile / 2, width, tile, false);
-      const rocks: [number, number][] = [
+      for (const [tx, ty] of [
         [2, 2],
         [17, 2],
         [1, 12],
         [18, 13],
         [9, 1],
         [11, 14],
-      ];
-      for (const [tx, ty] of rocks) {
-        items.push({
-          y: ty * tile + tile,
-          draw: () => {
-            ctx.fillStyle = "rgba(8, 24, 40, 0.25)";
-            ctx.beginPath();
-            ctx.ellipse(
-              tx * tile + tile * 0.5,
-              ty * tile + tile * 0.7,
-              tile * 0.32,
-              tile * 0.12,
-              0,
-              0,
-              Math.PI * 2,
-            );
-            ctx.fill();
-            ctx.fillStyle = "#4a4a55";
-            ctx.beginPath();
-            ctx.ellipse(
-              tx * tile + tile * 0.5,
-              ty * tile + tile * 0.55,
-              tile * 0.28,
-              tile * 0.18,
-              0,
-              0,
-              Math.PI * 2,
-            );
-            ctx.fill();
-            ctx.fillStyle = "#6a6a78";
-            ctx.beginPath();
-            ctx.ellipse(
-              tx * tile + tile * 0.42,
-              ty * tile + tile * 0.48,
-              tile * 0.14,
-              tile * 0.1,
-              -0.3,
-              0,
-              Math.PI * 2,
-            );
-            ctx.fill();
-          },
-        });
+        [5, 6],
+        [14, 8],
+      ] as [number, number][]) {
+        pushDeco(tx, ty, "deco_rock");
       }
+      pushDeco(8, 5, "deco_crate");
+      pushDeco(12, 10, "deco_barrel");
       break;
     }
   }
@@ -542,15 +556,17 @@ function paintPathRow(
 ): void {
   const yy = Math.round(y);
   if (softEdge) {
-    // 路缘淡影，让路嵌进草地
-    ctx.fillStyle = "rgba(40, 30, 18, 0.12)";
-    ctx.fillRect(0, yy - 2, width, tile + 4);
-    ctx.fillStyle = "rgba(20, 40, 30, 0.08)";
-    ctx.fillRect(0, yy - 1, width, 2);
-    ctx.fillRect(0, yy + tile - 1, width, 2);
+    // 路缘衔接色：深土压边，减轻与草地硬接缝
+    ctx.fillStyle = "rgba(48, 40, 28, 0.18)";
+    ctx.fillRect(0, yy - 3, width, tile + 6);
+    ctx.fillStyle = "rgba(30, 50, 36, 0.1)";
+    ctx.fillRect(0, yy - 2, width, 3);
+    ctx.fillRect(0, yy + tile - 1, width, 3);
   }
   for (let x = 0, i = 0; x < width; x += tile, i++) {
-    const name: SpriteName = i % 2 === 0 ? "tile_path" : "tile_path2";
+    // 形状变体交错 + 偶发翻转（由 draw 时处理不了，这里换图）
+    const name: SpriteName =
+      (i + Math.floor(yy / tile)) % 3 === 0 ? "tile_path2" : "tile_path";
     if (!drawSprite(ctx, name, x, yy, { w: tile, h: tile })) {
       if (!drawSprite(ctx, "tile_path", x, yy, { w: tile, h: tile })) {
         ctx.fillStyle = "#6d7a45";

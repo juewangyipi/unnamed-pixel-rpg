@@ -26,6 +26,8 @@ export class Player {
     let { x: ax, y: ay } = axis;
     if (ax === 0 && ay === 0) {
       this.moving = false;
+      // 站立时仍推进相位，供 idle 呼吸帧
+      this.walkPhase += dt * 9;
       return;
     }
 

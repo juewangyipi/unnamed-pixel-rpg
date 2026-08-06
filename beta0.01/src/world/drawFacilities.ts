@@ -67,12 +67,18 @@ function drawFacility(
   sprite: SpriteName,
   fallback: (ctx: CanvasRenderingContext2D, f: Facility) => void,
 ): void {
+  // 商店/仓库：石基座 + 更大阴影，嵌进村落地面，减少「飘在草上」的割裂感
+  const isBuilding = f.kind === "shop" || f.kind === "warehouse";
+  if (isBuilding) {
+    drawBuildingPad(ctx, f);
+  }
+
   drawShadow(
     ctx,
     f.x + f.size / 2,
     f.y + f.size - 1,
-    f.size * 0.42,
-    f.size * 0.12,
+    f.size * (isBuilding ? 0.52 : 0.42),
+    f.size * (isBuilding ? 0.14 : 0.12),
   );
   if (focused) strokeFocus(ctx, f);
 
@@ -85,6 +91,35 @@ function drawFacility(
   if (!ok) fallback(ctx, f);
 
   drawLabel(ctx, f.label, f.x + f.size / 2, f.y - 4);
+}
+
+/** 建筑脚下石板，用村落地砖拼一圈，和 Cainos 石地统一 */
+function drawBuildingPad(ctx: CanvasRenderingContext2D, f: Facility): void {
+  const pad = 6;
+  const x = Math.round(f.x - pad);
+  const y = Math.round(f.y + f.size * 0.55);
+  const w = Math.round(f.size + pad * 2);
+  const h = Math.round(f.size * 0.5 + pad);
+  const tile =
+    getSprite("tile_village") ?? getSprite("tile_village2") ?? null;
+  if (tile) {
+    ctx.imageSmoothingEnabled = false;
+    const tw = 32;
+    for (let py = y; py < y + h; py += tw) {
+      for (let px = x; px < x + w; px += tw) {
+        const dw = Math.min(tw, x + w - px);
+        const dh = Math.min(tw, y + h - py);
+        ctx.drawImage(tile, 0, 0, dw, dh, px, py, dw, dh);
+      }
+    }
+  } else {
+    ctx.fillStyle = "rgba(90, 88, 82, 0.85)";
+    ctx.fillRect(x, y, w, h);
+  }
+  // 外缘深色衔接草地
+  ctx.strokeStyle = "rgba(40, 36, 30, 0.35)";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
 }
 
 function drawLabel(
@@ -133,6 +168,54 @@ function fallbackSave(ctx: CanvasRenderingContext2D, f: Facility): void {
   ctx.fill();
 }
 
+function drawProgressBar(
+  ctx: CanvasRenderingContext2D,
+  f: Facility,
+  progress: number,
+  fill: string,
+  track: string,
+): void {
+  const bw = f.size;
+  const bh = 3;
+  const bx = f.x;
+  const by = f.y + f.size + 3;
+  ctx.fillStyle = "rgba(0,0,0,0.55)";
+  ctx.fillRect(bx - 1, by - 1, bw + 2, bh + 2);
+  ctx.fillStyle = track;
+  ctx.fillRect(bx, by, bw, bh);
+  ctx.fillStyle = fill;
+  ctx.fillRect(bx, by, Math.round(bw * Math.min(1, progress)), bh);
+}
+
+/** 精灵 + 脚底对齐；无图时返回 false */
+function drawFacilitySprite(
+  ctx: CanvasRenderingContext2D,
+  name: SpriteName,
+  f: Facility,
+  opts?: { maxH?: number },
+): boolean {
+  const img = getSprite(name);
+  if (!img) return false;
+  const maxH = opts?.maxH ?? f.size;
+  let w = img.naturalWidth;
+  let h = img.naturalHeight;
+  if (h > maxH) {
+    const s = maxH / h;
+    w = Math.round(w * s);
+    h = Math.round(h * s);
+  }
+  if (w > f.size * 1.4) {
+    const s = (f.size * 1.4) / w;
+    w = Math.round(w * s);
+    h = Math.round(h * s);
+  }
+  return drawSprite(ctx, name, f.x, f.y, {
+    foot: { w: f.size, h: f.size },
+    w,
+    h,
+  });
+}
+
 function drawCampfire(
   ctx: CanvasRenderingContext2D,
   f: Facility,
@@ -143,64 +226,58 @@ function drawCampfire(
   const progress = state?.progress ?? 0;
   const t = state?.timeSec ?? 0;
   const cx = f.x + f.size / 2;
-  const cy = f.y + f.size * 0.62;
 
   drawShadow(ctx, cx, f.y + f.size - 1, f.size * 0.4, f.size * 0.12);
   if (focused) strokeFocus(ctx, f);
 
-  // 石圈
-  ctx.fillStyle = "#6a655c";
-  for (let i = 0; i < 6; i++) {
-    const a = (i / 6) * Math.PI * 2 + 0.2;
-    const rx = cx + Math.cos(a) * f.size * 0.32;
-    const ry = cy + Math.sin(a) * f.size * 0.18;
-    ctx.beginPath();
-    ctx.ellipse(rx, ry, 3.2, 2.2, a, 0, Math.PI * 2);
-    ctx.fill();
+  // Cainos 石圈：燃烧时用完整井圈，熄灭用半圈火塘
+  const baseOk = lit
+    ? drawFacilitySprite(ctx, "facility_campfire_ring", f, {
+        maxH: f.size * 1.15,
+      }) || drawFacilitySprite(ctx, "facility_campfire", f)
+    : drawFacilitySprite(ctx, "facility_campfire", f);
+
+  if (!baseOk) {
+    // 几何回退
+    const cy = f.y + f.size * 0.62;
+    ctx.fillStyle = "#6a655c";
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2 + 0.2;
+      const rx = cx + Math.cos(a) * f.size * 0.32;
+      const ry = cy + Math.sin(a) * f.size * 0.18;
+      ctx.beginPath();
+      ctx.ellipse(rx, ry, 3.2, 2.2, a, 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
 
-  // 木柴
-  ctx.strokeStyle = lit ? "#5a3a22" : "#4a4038";
-  ctx.lineWidth = 3;
-  ctx.lineCap = "round";
-  ctx.beginPath();
-  ctx.moveTo(cx - 8, cy + 2);
-  ctx.lineTo(cx + 8, cy - 4);
-  ctx.moveTo(cx + 8, cy + 2);
-  ctx.lineTo(cx - 8, cy - 4);
-  ctx.stroke();
-
   if (lit) {
+    const cy = f.y + f.size * 0.55;
     const flicker = 1 + Math.sin(t * 14) * 0.08 + Math.sin(t * 23) * 0.05;
-    const h = f.size * 0.42 * flicker;
-    // 外焰
+    const h = f.size * 0.38 * flicker;
     ctx.fillStyle = "#e85d2a";
     ctx.beginPath();
-    ctx.moveTo(cx - 6, cy);
-    ctx.quadraticCurveTo(cx - 7, cy - h * 0.55, cx, cy - h);
-    ctx.quadraticCurveTo(cx + 7, cy - h * 0.55, cx + 6, cy);
+    ctx.moveTo(cx - 5, cy);
+    ctx.quadraticCurveTo(cx - 6, cy - h * 0.55, cx, cy - h);
+    ctx.quadraticCurveTo(cx + 6, cy - h * 0.55, cx + 5, cy);
     ctx.closePath();
     ctx.fill();
-    // 内焰
     ctx.fillStyle = "#ffd36a";
     ctx.beginPath();
-    ctx.moveTo(cx - 3, cy - 1);
-    ctx.quadraticCurveTo(cx - 2, cy - h * 0.45, cx, cy - h * 0.72);
-    ctx.quadraticCurveTo(cx + 2, cy - h * 0.45, cx + 3, cy - 1);
+    ctx.moveTo(cx - 2.5, cy - 1);
+    ctx.quadraticCurveTo(cx - 1.5, cy - h * 0.45, cx, cy - h * 0.7);
+    ctx.quadraticCurveTo(cx + 1.5, cy - h * 0.45, cx + 2.5, cy - 1);
     ctx.closePath();
     ctx.fill();
-
-    // 燃烧进度条
-    const bw = f.size;
-    const bh = 3;
-    const bx = f.x;
-    const by = f.y + f.size + 3;
-    ctx.fillStyle = "rgba(0,0,0,0.55)";
-    ctx.fillRect(bx - 1, by - 1, bw + 2, bh + 2);
-    ctx.fillStyle = "#3a2010";
-    ctx.fillRect(bx, by, bw, bh);
-    ctx.fillStyle = "#ff9a3c";
-    ctx.fillRect(bx, by, Math.round(bw * Math.min(1, progress)), bh);
+    // 火星
+    for (let i = 0; i < 3; i++) {
+      const phase = t * (3 + i) + i * 2;
+      const px = cx + Math.sin(phase) * (3 + i);
+      const py = cy - h * 0.5 - ((phase * 6) % 12);
+      ctx.fillStyle = `rgba(255, 200, 80, ${0.4 + (i % 2) * 0.25})`;
+      ctx.fillRect(Math.round(px), Math.round(py), 2, 2);
+    }
+    drawProgressBar(ctx, f, progress, "#ff9a3c", "#3a2010");
   }
 
   drawLabel(ctx, lit ? "篝火（燃）" : "篝火", cx, f.y - 4);
@@ -216,67 +293,42 @@ function drawCookingPot(
   const progress = state?.progress ?? 0;
   const t = state?.timeSec ?? 0;
   const cx = f.x + f.size / 2;
-  const cy = f.y + f.size * 0.55;
 
   drawShadow(ctx, cx, f.y + f.size - 1, f.size * 0.38, f.size * 0.12);
   if (focused) strokeFocus(ctx, f);
 
-  // 锅身
-  ctx.fillStyle = "#3a3e48";
-  ctx.beginPath();
-  ctx.ellipse(cx, cy + 4, f.size * 0.38, f.size * 0.22, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = "#2a2e36";
-  ctx.fillRect(cx - f.size * 0.34, cy - 2, f.size * 0.68, f.size * 0.28);
-  ctx.fillStyle = cooking ? "#c45a28" : "#4a3a28";
-  ctx.beginPath();
-  ctx.ellipse(cx, cy - 1, f.size * 0.3, f.size * 0.12, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  // 锅耳
-  ctx.strokeStyle = "#5a606c";
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.arc(cx - f.size * 0.38, cy + 2, 4, Math.PI * 0.2, Math.PI * 1.2);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.arc(cx + f.size * 0.38, cy + 2, 4, -Math.PI * 0.2, Math.PI * 0.8);
-  ctx.stroke();
+  const ok = drawFacilitySprite(ctx, "facility_cooking_pot", f);
+  if (!ok) {
+    const cy = f.y + f.size * 0.55;
+    ctx.fillStyle = "#3a3e48";
+    ctx.beginPath();
+    ctx.ellipse(cx, cy + 4, f.size * 0.38, f.size * 0.22, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
 
   if (cooking) {
-    // 冒泡
+    const cy = f.y + f.size * 0.4;
     for (let i = 0; i < 4; i++) {
       const phase = t * (2.2 + i * 0.35) + i * 1.7;
       const bx = cx + Math.sin(phase) * (5 + i);
-      const by = cy - 6 - ((phase * 8) % 18);
+      const by = cy - ((phase * 8) % 18);
       const r = 1.5 + (i % 3) * 0.6;
       ctx.fillStyle = `rgba(230, 245, 255, ${0.35 + (i % 2) * 0.2})`;
       ctx.beginPath();
       ctx.arc(bx, by, r, 0, Math.PI * 2);
       ctx.fill();
     }
-    // 蒸汽
     ctx.strokeStyle = "rgba(220, 230, 240, 0.35)";
     ctx.lineWidth = 1.5;
     for (let i = 0; i < 3; i++) {
       const sx = cx - 4 + i * 4;
       const bob = Math.sin(t * 6 + i) * 2;
       ctx.beginPath();
-      ctx.moveTo(sx, cy - 8);
-      ctx.quadraticCurveTo(sx + 2, cy - 14 + bob, sx - 1, cy - 20 + bob);
+      ctx.moveTo(sx, cy - 4);
+      ctx.quadraticCurveTo(sx + 2, cy - 10 + bob, sx - 1, cy - 16 + bob);
       ctx.stroke();
     }
-
-    const bw = f.size;
-    const bh = 3;
-    const bx = f.x;
-    const by = f.y + f.size + 3;
-    ctx.fillStyle = "rgba(0,0,0,0.55)";
-    ctx.fillRect(bx - 1, by - 1, bw + 2, bh + 2);
-    ctx.fillStyle = "#1a2030";
-    ctx.fillRect(bx, by, bw, bh);
-    ctx.fillStyle = "#7ec8ff";
-    ctx.fillRect(bx, by, Math.round(bw * Math.min(1, progress)), bh);
+    drawProgressBar(ctx, f, progress, "#7ec8ff", "#1a2030");
   }
 
   drawLabel(ctx, cooking ? "烹饪锅（沸）" : "烹饪锅", cx, f.y - 4);
@@ -292,52 +344,30 @@ function drawAlchemyTable(
   const progress = state?.progress ?? 0;
   const t = state?.timeSec ?? 0;
   const cx = f.x + f.size / 2;
-  const cy = f.y + f.size * 0.55;
 
   drawShadow(ctx, cx, f.y + f.size - 1, f.size * 0.4, f.size * 0.12);
   if (focused) strokeFocus(ctx, f);
 
-  // 木台
-  ctx.fillStyle = "#5a4030";
-  ctx.fillRect(f.x + 2, f.y + f.size * 0.45, f.size - 4, f.size * 0.4);
-  ctx.fillStyle = "#7a5840";
-  ctx.fillRect(f.x + 3, f.y + f.size * 0.48, f.size - 6, 4);
-
-  // 烧瓶
-  ctx.fillStyle = crafting ? "#6bcf8e" : "#4a8a6a";
-  ctx.beginPath();
-  ctx.moveTo(cx - 5, cy - 2);
-  ctx.lineTo(cx - 7, cy + 8);
-  ctx.lineTo(cx + 7, cy + 8);
-  ctx.lineTo(cx + 5, cy - 2);
-  ctx.closePath();
-  ctx.fill();
-  ctx.fillStyle = "#c8e8d8";
-  ctx.fillRect(cx - 2, cy - 10, 4, 9);
-  ctx.strokeStyle = "#2a4a38";
-  ctx.lineWidth = 1;
-  ctx.strokeRect(cx - 2, cy - 10, 4, 9);
+  const ok = drawFacilitySprite(ctx, "facility_alchemy", f, {
+    maxH: f.size * 1.25,
+  });
+  if (!ok) {
+    ctx.fillStyle = "#5a4030";
+    ctx.fillRect(f.x + 2, f.y + f.size * 0.45, f.size - 4, f.size * 0.4);
+  }
 
   if (crafting) {
+    const cy = f.y + f.size * 0.35;
     for (let i = 0; i < 3; i++) {
       const phase = t * (2.5 + i * 0.4) + i;
       const bx = cx + Math.sin(phase) * 4;
-      const by = cy - 4 - ((phase * 7) % 14);
+      const by = cy - ((phase * 7) % 14);
       ctx.fillStyle = `rgba(160, 255, 180, ${0.4 + (i % 2) * 0.25})`;
       ctx.beginPath();
       ctx.arc(bx, by, 1.4 + i * 0.3, 0, Math.PI * 2);
       ctx.fill();
     }
-    const bw = f.size;
-    const bh = 3;
-    const bx = f.x;
-    const by = f.y + f.size + 3;
-    ctx.fillStyle = "rgba(0,0,0,0.55)";
-    ctx.fillRect(bx - 1, by - 1, bw + 2, bh + 2);
-    ctx.fillStyle = "#1a3020";
-    ctx.fillRect(bx, by, bw, bh);
-    ctx.fillStyle = "#7dffb0";
-    ctx.fillRect(bx, by, Math.round(bw * Math.min(1, progress)), bh);
+    drawProgressBar(ctx, f, progress, "#7dffb0", "#1a3020");
   }
 
   drawLabel(ctx, crafting ? "制药台（炼）" : "制药台", cx, f.y - 4);
@@ -352,21 +382,20 @@ function drawChickenCoop(
   drawShadow(ctx, cx, f.y + f.size - 1, f.size * 0.42, f.size * 0.12);
   if (focused) strokeFocus(ctx, f);
 
-  // 简易木屋鸡舍
-  ctx.fillStyle = "#8a6040";
-  ctx.fillRect(f.x + 4, f.y + f.size * 0.35, f.size - 8, f.size * 0.55);
-  ctx.fillStyle = "#c45a3a";
-  ctx.beginPath();
-  ctx.moveTo(f.x + 2, f.y + f.size * 0.4);
-  ctx.lineTo(cx, f.y + 4);
-  ctx.lineTo(f.x + f.size - 2, f.y + f.size * 0.4);
-  ctx.closePath();
-  ctx.fill();
-  ctx.fillStyle = "#3a2818";
-  ctx.fillRect(cx - 4, f.y + f.size * 0.55, 8, f.size * 0.35);
-  // 小窗
-  ctx.fillStyle = "#f0d080";
-  ctx.fillRect(f.x + 8, f.y + f.size * 0.5, 6, 6);
+  const ok = drawFacilitySprite(ctx, "facility_chicken_coop", f, {
+    maxH: f.size * 1.2,
+  });
+  if (!ok) {
+    ctx.fillStyle = "#8a6040";
+    ctx.fillRect(f.x + 4, f.y + f.size * 0.35, f.size - 8, f.size * 0.55);
+    ctx.fillStyle = "#c45a3a";
+    ctx.beginPath();
+    ctx.moveTo(f.x + 2, f.y + f.size * 0.4);
+    ctx.lineTo(cx, f.y + 4);
+    ctx.lineTo(f.x + f.size - 2, f.y + f.size * 0.4);
+    ctx.closePath();
+    ctx.fill();
+  }
 
   drawLabel(ctx, f.label, cx, f.y - 4);
 }

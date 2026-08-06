@@ -963,10 +963,21 @@ def make_sheet(sprites: dict[str, Image.Image]) -> Image.Image:
 
 def load_hand_drawn() -> dict[str, Image.Image]:
     migrated = ROOT / "src" / "migrated-from-v0.1"
+    mystic = ROOT / "src" / "migrated-from-mystic"
+    cainos = ROOT / "src" / "migrated-from-cainos"
     mapping = {
         "item_wood": migrated / "wood" / "nor_wood_32.png",
         "item_cooked_shrimp": migrated / "shrimp" / "nor_shrimp_32.png",
+        # Mystic Woods free 2.2 角色四向（非商用包；见 references/mystic_woods_free_2.2）
+        "player_down": mystic / "player_down.png",
+        "player_up": mystic / "player_up.png",
+        "player_left": mystic / "player_left.png",
+        "player_right": mystic / "player_right.png",
     }
+    # Cainos Pixel Art Top Down - Basic：地砖 / 灌木 / 树 / 设施（整目录优先）
+    if cainos.is_dir():
+        for path in sorted(cainos.glob("*.png")):
+            mapping[path.stem] = path
     out: dict[str, Image.Image] = {}
     for name, path in mapping.items():
         if path.is_file():
@@ -979,36 +990,40 @@ def main() -> None:
     print("Generating fine-detail style-B+ sprites...")
     hand = load_hand_drawn()
     sprites: dict[str, Image.Image] = {
-        "player_down": make_player("down"),
-        "player_up": make_player("up"),
-        "player_left": make_player("left"),
-        "player_right": make_player("right"),
-        "slime": make_slime(),
-        "tree": make_tree(),
-        "tree_stump": make_tree_stump(),
-        "fish_spot": make_fish_spot(False),
-        "fish_spot_empty": make_fish_spot(True),
-        "shop": make_shop(),
-        "warehouse": make_warehouse(),
-        "save_point": make_save_point(),
-        "house": make_house(),
-        "bush": make_bush(),
-        "tile_grass": make_tile("grass", 0),
-        "tile_grass2": make_tile("grass", 1),
-        "tile_path": make_tile("path", 0),
-        "tile_path2": make_tile("path", 1),
-        "tile_water": make_tile("water", 0),
-        "tile_water2": make_tile("water", 1),
-        "tile_water_edge": make_tile("water_edge", 0),
-        "tile_forest": make_tile("forest", 0),
-        "tile_forest2": make_tile("forest", 1),
-        "tile_village": make_tile("village", 0),
-        "tile_village2": make_tile("village", 1),
+        "player_down": hand.get("player_down") or make_player("down"),
+        "player_up": hand.get("player_up") or make_player("up"),
+        "player_left": hand.get("player_left") or make_player("left"),
+        "player_right": hand.get("player_right") or make_player("right"),
+        "slime": hand.get("slime") or make_slime(),
+        "tree": hand.get("tree") or make_tree(),
+        "tree_stump": hand.get("tree_stump") or make_tree_stump(),
+        "fish_spot": hand.get("fish_spot") or make_fish_spot(False),
+        "fish_spot_empty": hand.get("fish_spot_empty") or make_fish_spot(True),
+        "shop": hand.get("shop") or make_shop(),
+        "warehouse": hand.get("warehouse") or make_warehouse(),
+        "save_point": hand.get("save_point") or make_save_point(),
+        "house": hand.get("house") or make_house(),
+        "bush": hand.get("bush") or make_bush(),
+        "tile_grass": hand.get("tile_grass") or make_tile("grass", 0),
+        "tile_grass2": hand.get("tile_grass2") or make_tile("grass", 1),
+        "tile_path": hand.get("tile_path") or make_tile("path", 0),
+        "tile_path2": hand.get("tile_path2") or make_tile("path", 1),
+        "tile_water": hand.get("tile_water") or make_tile("water", 0),
+        "tile_water2": hand.get("tile_water2") or make_tile("water", 1),
+        "tile_water_edge": hand.get("tile_water_edge") or make_tile("water_edge", 0),
+        "tile_forest": hand.get("tile_forest") or make_tile("forest", 0),
+        "tile_forest2": hand.get("tile_forest2") or make_tile("forest", 1),
+        "tile_village": hand.get("tile_village") or make_tile("village", 0),
+        "tile_village2": hand.get("tile_village2") or make_tile("village", 1),
         "item_wood": hand.get("item_wood") or make_item_wood(),
-        "item_raw_shrimp": make_item_raw_shrimp(),
+        "item_raw_shrimp": hand.get("item_raw_shrimp") or make_item_raw_shrimp(),
         "item_cooked_shrimp": hand.get("item_cooked_shrimp") or make_item_cooked_shrimp(),
-        "focus_ring": make_focus_ring(),
+        "focus_ring": hand.get("focus_ring") or make_focus_ring(),
     }
+    # Cainos 额外资产（设施 / 装饰 / 副地砖）直接写出
+    for name, img in hand.items():
+        if name not in sprites:
+            sprites[name] = img
     for name, img in sprites.items():
         save(img, name)
     sheet = make_sheet(sprites)

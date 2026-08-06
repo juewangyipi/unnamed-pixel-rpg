@@ -51,6 +51,7 @@ import { getItem, type ItemId } from "../data/items.ts";
 import { getFoodHeal, isEdible } from "../data/foods.ts";
 import { getPotionEffect, isDrinkable } from "../data/potions.ts";
 import { drawShadow, drawSprite, type SpriteName } from "../assets/sprites.ts";
+import { drawPlayerFrame } from "../assets/playerAnim.ts";
 import { drawFarmPlots } from "../world/drawFarmPlots.ts";
 import { drawChickens } from "../world/drawChickens.ts";
 
@@ -1098,8 +1099,7 @@ export class Game {
 
   private drawPlayer(): void {
     const { ctx, player } = this;
-    // 行走微弹：1～2px，阴影反向压扁
-    const bob = player.moving ? Math.round(Math.sin(player.walkPhase) * 1.6) : 0;
+    // 阴影随步伐压扁；精灵表 walk 帧自带起伏，不再叠代码 bob
     const squash = player.moving
       ? 1 - Math.abs(Math.sin(player.walkPhase)) * 0.08
       : 1;
@@ -1113,6 +1113,26 @@ export class Game {
       shadowRx,
       shadowRy,
     );
+
+    // 优先：Mystic Woods 精灵表 idle / walk
+    if (
+      drawPlayerFrame(
+        ctx,
+        player.facing,
+        player.moving,
+        player.walkPhase,
+        player.x,
+        player.y,
+        player.size,
+      )
+    ) {
+      return;
+    }
+
+    // 回退：四向单帧 PNG + 微弹
+    const bob = player.moving
+      ? Math.round(Math.sin(player.walkPhase) * 1.6)
+      : 0;
     const ok = drawSprite(
       ctx,
       this.playerSprite(player.facing),

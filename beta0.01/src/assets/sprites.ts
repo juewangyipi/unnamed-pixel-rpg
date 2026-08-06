@@ -17,8 +17,10 @@ export type SpriteName =
   | "save_point"
   | "house"
   | "bush"
+  | "bush2"
   | "tile_grass"
   | "tile_grass2"
+  | "tile_grass_flower"
   | "tile_path"
   | "tile_path2"
   | "tile_water"
@@ -28,6 +30,18 @@ export type SpriteName =
   | "tile_forest2"
   | "tile_village"
   | "tile_village2"
+  | "tile_dirt_patch"
+  | "tile_dirt_patch2"
+  | "facility_campfire"
+  | "facility_campfire_ring"
+  | "facility_cooking_pot"
+  | "facility_alchemy"
+  | "facility_chicken_coop"
+  | "deco_rock"
+  | "deco_barrel"
+  | "deco_crate"
+  | "deco_chest"
+  | "deco_sign"
   | "item_wood"
   | "item_raw_shrimp"
   | "focus_ring";
@@ -46,8 +60,10 @@ const NAMES: SpriteName[] = [
   "save_point",
   "house",
   "bush",
+  "bush2",
   "tile_grass",
   "tile_grass2",
+  "tile_grass_flower",
   "tile_path",
   "tile_path2",
   "tile_water",
@@ -57,18 +73,41 @@ const NAMES: SpriteName[] = [
   "tile_forest2",
   "tile_village",
   "tile_village2",
+  "tile_dirt_patch",
+  "tile_dirt_patch2",
+  "facility_campfire",
+  "facility_campfire_ring",
+  "facility_cooking_pot",
+  "facility_alchemy",
+  "facility_chicken_coop",
+  "deco_rock",
+  "deco_barrel",
+  "deco_crate",
+  "deco_chest",
+  "deco_sign",
   "item_wood",
   "item_raw_shrimp",
   "focus_ring",
 ];
 
-/** 主地砖 → 变体（打破重复感） */
+/** 主地砖 → 形状不同的副变体（非仅换色） */
 const TILE_VARIANT: Partial<Record<SpriteName, SpriteName>> = {
   tile_grass: "tile_grass2",
   tile_path: "tile_path2",
   tile_water: "tile_water2",
   tile_forest: "tile_forest2",
   tile_village: "tile_village2",
+};
+
+/** 草地偶发第三变体 / 泥斑（打散重复） */
+const TILE_ACCENT: Partial<
+  Record<SpriteName, { name: SpriteName; chanceMask: number }[]>
+> = {
+  tile_grass: [
+    { name: "tile_grass_flower", chanceMask: 0x1f }, // ~1/32
+    { name: "tile_dirt_patch", chanceMask: 0x2f }, // rarer mud edge
+  ],
+  tile_forest: [{ name: "tile_dirt_patch2", chanceMask: 0x1f }],
 };
 
 const cache = new Map<SpriteName, HTMLImageElement>();
@@ -181,7 +220,7 @@ function hashTile(tx: number, ty: number): number {
 }
 
 /**
- * 平铺地砖；若有 *2 变体则按格子交错，减少重复感。
+ * 平铺地砖：主/副形状变体交错 + 偶发强调砖 + 水平翻转，减少接缝感。
  */
 export function tileSprite(
   ctx: CanvasRenderingContext2D,
@@ -194,14 +233,26 @@ export function tileSprite(
   if (!primary) return false;
   const variantName = TILE_VARIANT[name];
   const secondary = variantName ? getSprite(variantName) : null;
+  const accents = TILE_ACCENT[name] ?? [];
   ctx.imageSmoothingEnabled = false;
   const cols = Math.ceil(width / tile);
   const rows = Math.ceil(height / tile);
   for (let ty = 0; ty < rows; ty++) {
     for (let tx = 0; tx < cols; tx++) {
-      const useB = secondary && (hashTile(tx, ty) & 1) === 1;
-      const img = useB && secondary ? secondary : primary;
-      // 偶发水平翻转，进一步打散 tiling
+      const h = hashTile(tx, ty);
+      let img = primary;
+      // 主/副按位交错（形状不同，非仅换色）
+      if (secondary && (h & 1) === 1) img = secondary;
+      // 稀有强调砖（花簇 / 泥斑）
+      for (const acc of accents) {
+        if ((h & acc.chanceMask) === 0) {
+          const aimg = getSprite(acc.name);
+          if (aimg) {
+            img = aimg;
+            break;
+          }
+        }
+      }
       const flip = (hashTile(tx + 3, ty + 7) & 3) === 0;
       const x = tx * tile;
       const y = ty * tile;

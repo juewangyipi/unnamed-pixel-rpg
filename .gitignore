@@ -29,3 +29,17 @@ Thumbs.db
 
 # Local Netlify folder
 .netlify
+
+# ---------------------------------------------------------------------------
+# 参考素材包（references/）—— 永远不要提交到 GitHub
+# ---------------------------------------------------------------------------
+# 第三方完整包体积大、授权也各异。需要的图请裁切/导出后放进：
+#   - beta0.01/public/assets/     （游戏加载）
+#   - art/src/migrated-from-*/    （源备份，可提交）
+# 本地可继续把原始包丢在 references/，仅本机使用。
+references/
+**/references/
+
+# 临时切图预览（本地工作文件）
+art/src/cainos_preview/
+**/*_preview.png

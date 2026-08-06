@@ -1,5 +1,15 @@
 # 美术资源说明（beta0.01）
 
+## ⚠️ `references/` 不要上传 GitHub
+
+| 目录 | 是否提交 | 说明 |
+|------|----------|------|
+| `references/` | **否** | 第三方完整素材包（Mystic Woods、Cainos 等），仅本机参考 |
+| `beta0.01/public/assets/` | **是** | 已裁切/导出的游戏用图 |
+| `art/src/migrated-from-*/` | **是** | 提取后的源备份，防止 `generate_sprites.py` 冲掉 |
+
+`.gitignore` 已忽略整个 `references/`。以后丢新包请仍放本机 `references/`，**只把用到的帧/砖提取进 assets 再提交**。
+
 ## 怎么改图（推荐流程）
 
 1. 用 **LibreSprite** 打开 `art/ase/*.ase`（每个精灵一份源文件）
@@ -64,6 +74,24 @@ python art\generate_sprites.py
 - `art/src/migrated-from-v0.1/`（源备份）
 
 `generate_sprites.py` 若存在上述备份，会优先用手绘图覆盖 `item_wood` / `item_cooked_shrimp` / `tree`，不会被程序生成稿冲掉。
+
+### 从 Mystic Woods free 2.2 迁入的角色
+
+- 源包：`references/mystic_woods_free_2.2/`（Game Endeavor，**仅非商用**）
+- 整表：`public/assets/player_sheet.png`（48×48 格，idle / move / attack / death）
+- 运行时动画：`beta0.01/src/assets/playerAnim.ts`（走 10fps×6 帧，站 idle 4fps）
+- 四向静态回退：`art/src/migrated-from-mystic/player_*.png` → `public/assets/player_*.png`
+- `generate_sprites.py` 会优先保留静态四向，不会被程序角色稿冲掉
+- 左向由右向水平翻转（与官方 README 一致）
+
+### 从 Cainos Pixel Art Top Down - Basic 迁入的环境
+
+- 源包：`references/Pixel Art Top Down - Basic v1.2.3/`
+- 备份：`art/src/migrated-from-cainos/`
+- 地砖：`tile_grass/2`（草叶 vs 花簇）、`tile_path/2`（泥土）、`tile_village/2`（石地）、`tile_forest/2`、泥斑/花簇强调砖
+- 设施：`facility_campfire`、`facility_campfire_ring`、`facility_cooking_pot`、`facility_alchemy`、`facility_chicken_coop`
+- 装饰：`bush/2`、`tree`、`deco_rock/barrel/crate/chest/sign`
+- 平铺逻辑见 `sprites.ts` 的 `tileSprite`（形状变体 + 偶发强调 + 翻转）
 
 ## 和游戏代码的关系
 
