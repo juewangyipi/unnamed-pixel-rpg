@@ -7,7 +7,8 @@ export class TimeOfDay {
   /** 一天内进度 0～1 */
   progress: number;
 
-  constructor(progress = 0.25) {
+  /** 默认从白天起点（progress 0.10）开局 */
+  constructor(progress = 0.1) {
     this.progress = progress;
   }
 
@@ -15,11 +16,15 @@ export class TimeOfDay {
     this.progress = (this.progress + dt / CONFIG.dayLengthSec) % 1;
   }
 
+  /**
+   * 一天占比：黎明 10% · 白天 50% · 黄昏 15% · 夜晚 25%
+   * progress 区间：[0,0.10) 黎明 · [0.10,0.60) 白天 · [0.60,0.75) 黄昏 · [0.75,1) 夜晚
+   */
   phase(): DayPhase {
     const p = this.progress;
-    if (p < 0.2) return "dawn";
-    if (p < 0.55) return "day";
-    if (p < 0.7) return "dusk";
+    if (p < 0.1) return "dawn";
+    if (p < 0.6) return "day";
+    if (p < 0.75) return "dusk";
     return "night";
   }
 
