@@ -336,28 +336,6 @@ function drawDecor(
     });
   };
 
-  const pushTree = (tx: number, ty: number) => {
-    items.push({
-      y: ty * tile + tile,
-      draw: () => {
-        footShadow(
-          tx * tile + tile * 0.5,
-          ty * tile + tile * 0.92,
-          tile * 0.3,
-          tile * 0.11,
-        );
-        const tree = getSprite("tree");
-        if (tree) {
-          drawSprite(ctx, "tree", tx * tile, ty * tile - 10, {
-            foot: { w: tile, h: tile },
-            w: tree.naturalWidth,
-            h: tree.naturalHeight,
-          });
-        }
-      },
-    });
-  };
-
   const pushDeco = (
     tx: number,
     ty: number,
@@ -443,14 +421,6 @@ function drawDecor(
         [13, 12, 0],
       ];
       for (const [tx, ty, v] of bushes) pushBush(tx, ty, v ?? 0);
-      for (const [tx, ty] of [
-        [5, 4],
-        [13, 4],
-        [2, 7],
-        [17, 7],
-      ] as [number, number][]) {
-        pushTree(tx, ty);
-      }
       // 村落道具：木桶 / 木箱 / 路牌 / 石块
       pushDeco(7, 6, "deco_barrel");
       pushDeco(12, 6, "deco_crate");
@@ -476,7 +446,6 @@ function drawDecor(
       pushDeco(7, 6, "deco_rock");
       pushDeco(14, 5, "deco_rock");
       pushDeco(4, 10, "deco_barrel");
-      pushTree(10, 9);
       break;
     }
     case "riverside": {
@@ -514,7 +483,6 @@ function drawDecor(
       pushBush(3, 3, 0);
       pushBush(8, 11, 1);
       pushBush(11, 4, 1);
-      pushTree(5, 5);
       pushDeco(7, 9, "deco_rock");
       pushDeco(2, 8, "deco_barrel");
       break;
@@ -549,15 +517,6 @@ function drawDecor(
         [12, 9, 1],
       ];
       for (const [tx, ty, v] of fBushes) pushBush(tx, ty, v);
-      for (const [tx, ty] of [
-        [4, 3],
-        [15, 4],
-        [8, 11],
-        [12, 2],
-        [10, 7],
-      ] as [number, number][]) {
-        pushTree(tx, ty);
-      }
       pushDeco(7, 8, "deco_rock");
       pushDeco(13, 12, "deco_rock");
       pushDeco(3, 6, "deco_barrel");

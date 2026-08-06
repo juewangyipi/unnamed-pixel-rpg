@@ -41,8 +41,18 @@ export function createMapInteractables(): Interactable[] {
   return [
     // 草地：路边一棵
     tree("gl_tree_1", "grassland", 6, 4),
+    tree("gl_tree_2", "grassland", 10, 9),
 
-    // 森林：多棵树
+    // 村庄：院内几棵
+    tree("vg_tree_1", "village", 5, 4),
+    tree("vg_tree_2", "village", 13, 4),
+    tree("vg_tree_3", "village", 2, 7),
+    tree("vg_tree_4", "village", 17, 7),
+
+    // 河边：一棵岸树
+    tree("rv_tree_1", "riverside", 5, 5),
+
+    // 森林：多棵树（含原先的装饰树，现全部可砍）
     tree("ft_tree_1", "forest", 3, 3),
     tree("ft_tree_2", "forest", 7, 2),
     tree("ft_tree_3", "forest", 12, 4),
@@ -53,6 +63,11 @@ export function createMapInteractables(): Interactable[] {
     tree("ft_tree_8", "forest", 5, 12),
     tree("ft_tree_9", "forest", 11, 12),
     tree("ft_tree_10", "forest", 17, 11),
+    tree("ft_tree_11", "forest", 4, 3),
+    tree("ft_tree_12", "forest", 15, 4),
+    tree("ft_tree_13", "forest", 8, 11),
+    tree("ft_tree_14", "forest", 12, 2),
+    tree("ft_tree_15", "forest", 10, 7),
 
     // 矿区：符文精华（快）+ 铜矿石（慢）
     node("mn_rune_1", "rune_node", "mine", 4, 4),
