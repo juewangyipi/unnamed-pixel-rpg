@@ -86,7 +86,7 @@ export class InventoryPanel {
     this.meta.textContent = `${inv.usedSlots()} / ${inv.capacity} 格`;
     this.grid.replaceChildren();
 
-    inv.slots.forEach((slot, index) => {
+    inv.slots.forEach((slot) => {
       const cell = document.createElement("button");
       cell.type = "button";
       if (slot) {
@@ -158,7 +158,6 @@ export class InventoryPanel {
         cell.className = "inv-slot empty";
         cell.disabled = true;
       }
-      void index;
       this.grid.appendChild(cell);
     });
   }

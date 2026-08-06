@@ -14,13 +14,19 @@ export type FarmPlotSnapshot = {
 /** 农田状态仓库：生长用墙钟秒，便于离线成熟。 */
 export class FarmStore {
   private readonly all: FarmPlot[];
+  /** 每块只 filter 一次；块归属不变，缓存无需失效 */
+  private readonly byChunk = new Map<ChunkId, FarmPlot[]>();
 
   constructor() {
     this.all = createMapFarmPlots();
   }
 
   forChunk(chunkId: ChunkId): FarmPlot[] {
-    return this.all.filter((p) => p.chunkId === chunkId);
+    let list = this.byChunk.get(chunkId);
+    if (list) return list;
+    list = this.all.filter((p) => p.chunkId === chunkId);
+    this.byChunk.set(chunkId, list);
+    return list;
   }
 
   allList(): FarmPlot[] {

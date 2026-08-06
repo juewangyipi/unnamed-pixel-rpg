@@ -62,6 +62,11 @@ import { drawPlayerFrame } from "../assets/playerAnim.ts";
 import type { PlayerAnimKind } from "../assets/playerAnim.ts";
 import { drawFarmPlots } from "../world/drawFarmPlots.ts";
 import { drawChickens } from "../world/drawChickens.ts";
+import { drawFishing } from "../world/drawFishing.ts";
+import { FishingSystem } from "../systems/fishing.ts";
+
+/** 存档落盘冷却：合并短时内的多次写，避免每次买卖都 JSON.stringify */
+const SAVE_COOLDOWN_MS = 2000;
 
 /**
  * 核心循环：移动 · 切屏 · 采集 · 背包 · 商店仓库 · 昼夜 · 暂停菜单 · 存档
@@ -99,6 +104,7 @@ export class Game {
   private readonly farms = new FarmStore();
   private readonly farmIx = new FarmInteraction();
   private readonly coopCombat = new CoopCombatSystem();
+  private readonly fishing = new FishingSystem();
 
   private hp: number = CONFIG.maxHp;
   private savePoint: SavePointData;
@@ -113,6 +119,9 @@ export class Game {
   private running = false;
   private transitionFlash = 0;
   private autosaveAcc = 0;
+  private saveQueued = false;
+  private lastSaveMs = 0;
+  private lastHudText = "";
   private toasts: Toast[] = [];
   private focusGatherId: string | null = null;
   private focusFacility: Facility | null = null;
@@ -172,7 +181,7 @@ export class Game {
     this.tryLoad();
     this.invPanel.refresh(this.inventory);
 
-    this.onBeforeUnload = () => this.saveNow();
+    this.onBeforeUnload = () => this.flushSave(true);
     window.addEventListener("beforeunload", this.onBeforeUnload);
   }
 
@@ -187,7 +196,7 @@ export class Game {
     this.running = false;
     cancelAnimationFrame(this.raf);
     this.input.dispose();
-    this.saveNow();
+    this.flushSave(true);
     window.removeEventListener("beforeunload", this.onBeforeUnload);
   }
 
@@ -482,6 +491,17 @@ export class Game {
   }
 
   private saveNow(): void {
+    this.saveQueued = true;
+    this.flushSave();
+  }
+
+  /** 兜底落盘：冷却到期后去重写出；force 用于卸载前强写 */
+  private flushSave(force = false): void {
+    if (!this.saveQueued) return;
+    const now = Date.now();
+    if (!force && now - this.lastSaveMs < SAVE_COOLDOWN_MS) return;
+    this.saveQueued = false;
+    this.lastSaveMs = now;
     writeSave({
       version: CONFIG.version,
       wallMs: Date.now(),
@@ -744,7 +764,7 @@ export class Game {
     this.buffs.update(dt, buffToasts);
     if (buffToasts.length) this.toasts.push(...buffToasts);
 
-    // 采集：树/鱼点一下持续采（开面板时不采；农田交互优先；战斗中不采）
+    // 采集：树/矿点一下持续采（开面板时不采；农田交互优先；战斗中不采）
     const canGather =
       !this.shopPanel.isOpen &&
       !this.warehousePanel.isOpen &&
@@ -754,6 +774,26 @@ export class Game {
       !this.combatPanel.isOpen &&
       !this.coopCombat.fighting &&
       !this.activeFarm;
+
+    // 河边钓鱼：站在可钓区按 E 开钓/停止（与原采集相同的挂机机制，河里不放鱼点）
+    const fishPress =
+      canGather && !usedInteractForFacility && this.input.isInteractJustPressed();
+    const fishResult = this.fishing.update({
+      dt,
+      player: this.player,
+      chunkId: this.world.currentId,
+      interactJustPressed: fishPress,
+      inventory: this.inventory,
+      skills: this.skills,
+    });
+    if (fishResult.caught) this.lastGatherKind = this.fishing.lastGatherKind;
+    if (fishResult.toasts.length) {
+      this.toasts.push(...fishResult.toasts);
+      this.bagDirty = true;
+    }
+    // 在可钓区按下 E 已被钓鱼消费，不再触发普通采集
+    const fishConsumedPress = !!fishResult.zone && fishPress;
+
     const result = this.interaction.update({
       dt,
       nowSec,
@@ -762,6 +802,7 @@ export class Game {
       interactJustPressed:
         canGather &&
         !usedInteractForFacility &&
+        !fishConsumedPress &&
         this.input.isInteractJustPressed(),
       list: gatherList,
       inventory: this.inventory,
@@ -777,6 +818,15 @@ export class Game {
     // 采集动作（战斗中由 coopCombat 驱动，不覆盖 combat 挥砍）
     if (!this.coopCombat.fighting) {
       this.syncGatherAction(result.active, nowSec);
+    }
+
+    // 钓鱼中保持朝水面（挂机；移动出可钓区会自动停止）
+    if (!this.coopCombat.fighting && this.fishing.drawState(this.player, this.world.currentId)?.active) {
+      const zone = this.fishing.zoneFor(this.player, this.world.currentId);
+      if (zone) {
+        this.player.facing = zone.waterDir;
+        this.player.action = "fish";
+      }
     }
 
     if (result.toasts.length) {
@@ -796,6 +846,8 @@ export class Game {
         this.saveNow();
       }
     }
+    // 合并短时写：冷却到期后落盘
+    this.flushSave();
 
     if (this.settings.raw.showToasts) {
       for (const t of this.toasts) t.ttl -= dt;
@@ -986,6 +1038,12 @@ export class Game {
       drawChickens(ctx, this.coopCombat.chickens, nowSec, nowDraw);
     }
 
+    // 河边钓鱼视觉（可钓区内：鱼线/浮标/水花/进度条）
+    const fishState = this.fishing.drawState(this.player, this.world.currentId);
+    if (fishState) {
+      drawFishing(ctx, fishState, nowDraw);
+    }
+
     this.drawPlayer();
     this.drawDayOverlay();
     this.drawHpBar();
@@ -1068,6 +1126,11 @@ export class Game {
         return `生长中 · ${left}s · E 查看`;
       }
       return "E · 砍苹果树";
+    }
+    // 河边钓鱼（可钓区内）：未开钓提示按 E，开钓后提示按 E 停止
+    const fishTip = this.fishing.drawState(this.player, this.world.currentId);
+    if (fishTip) {
+      return fishTip.active ? "钓鱼中 · E 停止" : "E · 钓鱼";
     }
     if (this.activeInteract) {
       const profile = GATHER[this.activeInteract.kind];
@@ -1431,6 +1494,10 @@ export class Game {
     if (this.coopCombat.fighting) {
       lines.push(`战斗 · 鸡 ${this.coopCombat.aliveCount}`);
     }
-    this.hud.textContent = lines.join("\n");
+    // 只在内容变化时写 DOM，避免每帧触发布局
+    const text = lines.join("\n");
+    if (text === this.lastHudText) return;
+    this.lastHudText = text;
+    this.hud.textContent = text;
   }
 }

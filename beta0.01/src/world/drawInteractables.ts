@@ -31,8 +31,6 @@ export function drawInteractables(
 
     if (it.kind === "tree") {
       drawTree(ctx, it, available, focused, gathering, t);
-    } else if (it.kind === "fish_spot") {
-      drawFishSpot(ctx, it, available, focused, gathering, t, anim);
     } else if (it.kind === "rune_node") {
       drawMineNode(ctx, it, available, focused, "rune", gathering, t);
     } else if (it.kind === "copper_node") {
@@ -131,69 +129,6 @@ function drawTree(
       const py = cy - ((phase * 10 + i * 5) % 18);
       ctx.fillStyle = `rgba(180, 140, 80, ${0.35 + (i % 2) * 0.25})`;
       ctx.fillRect(Math.round(px), Math.round(py), 2, 2);
-    }
-  }
-}
-
-function drawFishSpot(
-  ctx: CanvasRenderingContext2D,
-  it: Interactable,
-  available: boolean,
-  focused: boolean,
-  gathering: boolean,
-  t: number,
-  anim?: GatherAnimContext,
-): void {
-  const { x, y, size } = it;
-  const cx = x + size / 2;
-  const cy = y + size / 2;
-  if (focused) drawFocus(ctx, x, y, size);
-
-  const name = available ? "fish_spot" : "fish_spot_empty";
-  if (
-    !drawSprite(ctx, name, x, y, {
-      w: size,
-      h: size,
-    })
-  ) {
-    ctx.fillStyle = available
-      ? "rgba(80, 180, 220, 0.55)"
-      : "rgba(80,80,90,0.4)";
-    ctx.beginPath();
-    ctx.ellipse(cx, cy, size * 0.45, size * 0.28, 0, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  // 水面涟漪
-  if (gathering && available) {
-    for (let i = 0; i < 3; i++) {
-      const wave = ((t * 1.4 + i * 0.33) % 1);
-      const r = size * (0.15 + wave * 0.35);
-      ctx.strokeStyle = `rgba(180, 230, 255, ${0.45 * (1 - wave)})`;
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      ctx.ellipse(cx, cy + 2, r, r * 0.45, 0, 0, Math.PI * 2);
-      ctx.stroke();
-    }
-    // 鱼漂轻点
-    const bob = Math.sin(t * 5) * 2;
-    ctx.fillStyle = "#c45a3a";
-    ctx.beginPath();
-    ctx.arc(cx + Math.sin(t * 2) * 3, cy + bob - 2, 2.2, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = "#fff0c0";
-    ctx.fillRect(Math.round(cx + Math.sin(t * 2) * 3 - 1), Math.round(cy + bob - 6), 2, 4);
-
-    // 钓线：玩家 → 鱼点
-    if (anim) {
-      ctx.strokeStyle = "rgba(220, 230, 240, 0.55)";
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(anim.playerCx, anim.playerCy - 4);
-      const midX = (anim.playerCx + cx) / 2;
-      const midY = Math.min(anim.playerCy, cy) - 12 - Math.sin(t * 3) * 2;
-      ctx.quadraticCurveTo(midX, midY, cx + Math.sin(t * 2) * 3, cy + bob - 2);
-      ctx.stroke();
     }
   }
 }

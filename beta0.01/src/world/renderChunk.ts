@@ -20,7 +20,35 @@ const TILE_FOR_CHUNK: Record<string, SpriteName> = {
 };
 
 /**
- * 画当前块：地砖变体 + 装饰深度排序 + 氛围层 + 出口。
+ * 静态背景缓存：地砖 + 网格 + AO + 氛围 + 装饰 + 出口，每块只画一次。
+ * 每帧只 drawImage 一次，动画层（粒子 / 水面焦散）再叠上去。
+ */
+const STATIC_CACHE = new Map<string, HTMLCanvasElement>();
+
+function getCachedBackground(
+  chunk: Chunk,
+  width: number,
+  height: number,
+  tile: number,
+): HTMLCanvasElement {
+  const key = `${chunk.id}:${width}x${height}`;
+  const cached = STATIC_CACHE.get(key);
+  if (cached) return cached;
+
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const c = canvas.getContext("2d");
+  if (!c) throw new Error("Chunk cache canvas unavailable");
+  c.imageSmoothingEnabled = false;
+
+  drawStaticBackground(c, chunk, width, height, tile);
+  STATIC_CACHE.set(key, canvas);
+  return canvas;
+}
+
+/**
+ * 画当前块：静态层取缓存，动画层（粒子 / 焦散）每帧叠加。
  */
 export function renderChunkBackground(
   ctx: CanvasRenderingContext2D,
@@ -30,34 +58,55 @@ export function renderChunkBackground(
   timeSec = 0,
 ): void {
   const { tileSize } = CONFIG;
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(getCachedBackground(chunk, width, height, tileSize), 0, 0);
+
+  if (chunk.id === "riverside") {
+    drawWaterCaustics(ctx, width, height, tileSize, timeSec);
+  }
+  drawParticles(ctx, chunk, width, height, timeSec);
+}
+
+function drawStaticBackground(
+  ctx: CanvasRenderingContext2D,
+  chunk: Chunk,
+  width: number,
+  height: number,
+  tile: number,
+): void {
   const tileName = TILE_FOR_CHUNK[chunk.id] ?? "tile_grass";
 
-  if (!tileSprite(ctx, tileName, width, height, tileSize)) {
+  if (!tileSprite(ctx, tileName, width, height, tile)) {
     ctx.fillStyle = chunk.groundColor;
     ctx.fillRect(0, 0, width, height);
   }
 
-  // 极淡网格
+  drawGrid(ctx, width, height, tile);
+  drawGroundAO(ctx, width, height);
+  drawDecor(ctx, chunk, width, height, tile);
+  drawAmbient(ctx, chunk, width, height);
+  drawExitEdges(ctx, chunk, width, height, tile);
+}
+
+/** 极淡网格 */
+function drawGrid(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  tile: number,
+): void {
   ctx.strokeStyle = "rgba(0,0,0,0.035)";
   ctx.lineWidth = 1;
   ctx.beginPath();
-  for (let x = 0; x <= width; x += tileSize) {
+  for (let x = 0; x <= width; x += tile) {
     ctx.moveTo(x + 0.5, 0);
     ctx.lineTo(x + 0.5, height);
   }
-  for (let y = 0; y <= height; y += tileSize) {
+  for (let y = 0; y <= height; y += tile) {
     ctx.moveTo(0, y + 0.5);
     ctx.lineTo(width, y + 0.5);
   }
   ctx.stroke();
-
-  // 地面微 AO（角暗），增强景深底板
-  drawGroundAO(ctx, width, height);
-
-  drawDecor(ctx, chunk, width, height, tileSize, timeSec);
-  drawAmbient(ctx, chunk, width, height, timeSec);
-  drawParticles(ctx, chunk, width, height, timeSec);
-  drawExitEdges(ctx, chunk, width, height, tileSize);
 }
 
 function drawGroundAO(
@@ -80,13 +129,12 @@ function drawGroundAO(
   ctx.fillRect(0, 0, width, height);
 }
 
-/** 天光 / vignette / 路径暖带 / 水面焦散 */
+/** 天光 / vignette / 路径暖带（静态，随 chunk 缓存） */
 function drawAmbient(
   ctx: CanvasRenderingContext2D,
   chunk: Chunk,
   width: number,
   height: number,
-  timeSec: number,
 ): void {
   const skyStrength =
     chunk.id === "village"
@@ -126,10 +174,6 @@ function drawAmbient(
   vig.addColorStop(1, "rgba(4, 16, 28, 0.22)");
   ctx.fillStyle = vig;
   ctx.fillRect(0, 0, width, height);
-
-  if (chunk.id === "riverside") {
-    drawWaterCaustics(ctx, width, height, CONFIG.tileSize, timeSec);
-  }
 
   if (chunk.id === "village") {
     const pathY = height / 2 + CONFIG.tileSize * 0.5;
@@ -249,7 +293,6 @@ function drawDecor(
   width: number,
   height: number,
   tile: number,
-  _timeSec: number,
 ): void {
   const items: DecorItem[] = [];
 

@@ -33,28 +33,14 @@ function tree(
   return node(id, "tree", chunkId, tileX, tileY);
 }
 
-function fish(
-  id: string,
-  chunkId: ChunkId,
-  tileX: number,
-  tileY: number,
-): Interactable {
-  return node(id, "fish_spot", chunkId, tileX, tileY);
-}
-
 /**
  * 各图互动物布局。
- * forest 砍树 · riverside 钓鱼 · mine 采矿 · grassland 可选树。
+ * forest 砍树 · riverside 在河边钓鱼（钓鱼见 systems/fishing.ts，不在区块内放鱼点）· mine 采矿 · grassland 可选树。
  */
 export function createMapInteractables(): Interactable[] {
   return [
     // 草地：路边一棵
     tree("gl_tree_1", "grassland", 6, 4),
-
-    // 河边：靠近水域的鱼点
-    fish("rv_fish_1", "riverside", 14, 4),
-    fish("rv_fish_2", "riverside", 15, 7),
-    fish("rv_fish_3", "riverside", 14, 11),
 
     // 森林：多棵树
     tree("ft_tree_1", "forest", 3, 3),
