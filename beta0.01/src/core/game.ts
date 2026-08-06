@@ -471,30 +471,6 @@ export class Game {
     if (offlineToasts.length === 0) {
       this.pushToast("已读取本地存档");
     }
-
-    // 撤回曾误发的一次性 +10000（标记还在说明领过；扣完清标记，只跑一次）
-    this.clawbackMistakenGoldGrant(10_000);
-  }
-
-  /**
-   * 旧版 applyOneTimeGoldGrant 把 +1万写进了存档。
-   * 新版本用同一 localStorage 标记扣回，避免 GitHub Pages / 本机继续带着脏金币。
-   */
-  private clawbackMistakenGoldGrant(amount: number): void {
-    const flagKey = `${CONFIG.saveKey}::grant-gold-1w-v1`;
-    try {
-      if (localStorage.getItem(flagKey) !== "1") return;
-      const before = this.wallet.gold;
-      this.wallet.gold = Math.max(0, before - amount);
-      localStorage.removeItem(flagKey);
-      const cut = before - this.wallet.gold;
-      if (cut > 0) {
-        this.pushToast(`已撤回误发金币 -${cut}`);
-      }
-      this.saveNow();
-    } catch {
-      /* 无 localStorage 则跳过 */
-    }
   }
 
   private saveNow(): void {
